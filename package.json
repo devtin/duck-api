@@ -86,7 +86,6 @@
     "koa-router": "^9.4.0",
     "lodash": "^4.17.20",
     "query-string": "^6.13.1",
-    "sift": "^13.3.0",
     "socket.io": "^2.3.0"
   },
   "config": {

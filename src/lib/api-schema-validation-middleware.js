@@ -81,8 +81,9 @@ export function apiSchemaValidationMiddleware ({ get = true, body = true }) {
 
     try {
       // todo: document that ctx is passed as part of the state
-      ctx.$pleasure.get = get && get instanceof Schema ? get.parse(getVars, { state: Object.assign({ ctx }, state) }) : getVars
-      ctx.$pleasure.body = body && body instanceof Schema ? body.parse(postVars, { state: Object.assign({ ctx }, state) }) : postVars
+      const parsingOptions = { state: Object.assign({ ctx }, state), virtualsEnumerable: false }
+      ctx.$pleasure.get = get && get instanceof Schema ? get.parse(getVars, parsingOptions) : getVars
+      ctx.$pleasure.body = body && body instanceof Schema ? body.parse(postVars, parsingOptions) : postVars
     } catch (err) {
       err.code = err.code || 400
       throw err

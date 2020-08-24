@@ -154,26 +154,20 @@ export function entityToCrudEndpoints (entity, entityDriver) {
   }))
 
   // add find endpoint in order to be able to share complex queries
-/*
   crudEndpoints.push({
-    path: `${ entity.path }`,
-    read: {
+    path: `${ entity.path }/find`,
+    create: {
       access: entity.access.read,
       description: `finds many ${entity.name} by complex query`,
       // todo: should I also add get: { type: Query } ?
       body: {
         type: 'Query'
       },
-      async handler (ctx, next) {
-        const doc = await dbDriver.read(entity.name, ctx.$pleasure.body)
-        if (!doc) {
-          return next()
-        }
-        ctx.body = doc
+      async handler (ctx) {
+        ctx.body = await entityDriver.list(ctx.$pleasure.body)
       }
     }
   })
-*/
 
   if (entity.duckModel._methods) {
     Object.keys(entity.duckModel._methods).forEach(methodName => {
