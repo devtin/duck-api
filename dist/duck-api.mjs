@@ -447,8 +447,9 @@ function apiSchemaValidationMiddleware ({ get = true, body = true }) {
 
     try {
       // todo: document that ctx is passed as part of the state
-      ctx.$pleasure.get = get && get instanceof Schema$6 ? get.parse(getVars, { state: Object.assign({ ctx }, state) }) : getVars;
-      ctx.$pleasure.body = body && body instanceof Schema$6 ? body.parse(postVars, { state: Object.assign({ ctx }, state) }) : postVars;
+      const parsingOptions = { state: Object.assign({ ctx }, state), virtualsEnumerable: false };
+      ctx.$pleasure.get = get && get instanceof Schema$6 ? get.parse(getVars, parsingOptions) : getVars;
+      ctx.$pleasure.body = body && body instanceof Schema$6 ? body.parse(postVars, parsingOptions) : postVars;
     } catch (err) {
       err.code = err.code || 400;
       throw err
@@ -722,26 +723,20 @@ function entityToCrudEndpoints (entity, entityDriver) {
   }));
 
   // add find endpoint in order to be able to share complex queries
-/*
   crudEndpoints.push({
-    path: `${ entity.path }`,
-    read: {
+    path: `${ entity.path }/find`,
+    create: {
       access: entity.access.read,
       description: `finds many ${entity.name} by complex query`,
       // todo: should I also add get: { type: Query } ?
       body: {
         type: 'Query'
       },
-      async handler (ctx, next) {
-        const doc = await dbDriver.read(entity.name, ctx.$pleasure.body)
-        if (!doc) {
-          return next()
-        }
-        ctx.body = doc
+      async handler (ctx) {
+        ctx.body = await entityDriver.list(ctx.$pleasure.body);
       }
     }
-  })
-*/
+  });
 
   if (entity.duckModel._methods) {
     Object.keys(entity.duckModel._methods).forEach(methodName => {
