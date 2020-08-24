@@ -1,0 +1,40 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "artista.net",
+    "description": "Api for artista",
+    "version": "1"
+  },
+  "paths": {
+    "/users": {
+      "get": {
+        "summary": "what is does",
+        "description": "Returns all pets from the system that the user has access to",
+        "responses": {
+          "200": {
+            "description": "A list of pets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "token",
+            "in": "header",
+            "description": "token to be passed as a header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "simple"
+          }
+        ]
+      }
+    }
+  }
+}
