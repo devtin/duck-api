@@ -231,7 +231,7 @@ export async function apiSetup ({
   app.use(async (ctx, next) => {
     await next()
     // response
-    if (!ctx.leaveAsIs && ctx.body) {
+    if (!ctx.leaveAsIs && ctx.body !== undefined) {
       ctx.body = {
         code: 200,
         data: ctx.body

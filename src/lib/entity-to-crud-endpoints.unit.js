@@ -39,7 +39,7 @@ test(`Converts an entity into an array of crud endpoints`, async t => {
   const converted = entityToCrudEndpoints(anEntity, entityDriver)
   t.true(Array.isArray(converted))
 
-  t.is(converted.length, 4)
+  t.is(converted.length, 5)
 
   converted.forEach(entity => {
     t.notThrows(() => CRUDEndpoint.parse(entity))
@@ -51,7 +51,5 @@ test(`Converts an entity into an array of crud endpoints`, async t => {
   t.truthy(converted[0].update)
   t.truthy(converted[0].delete)
   t.truthy(converted[0].list)
-  t.is(converted[1].path, '/papo/sandy-papo')
-  t.truthy(converted[1].create)
-  t.is(converted[3].path, '/papo/:id/huele-pega')
+  t.snapshot(converted)
 })

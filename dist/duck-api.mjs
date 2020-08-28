@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.1
+ * duck-api v0.0.3
  * (c) 2020-2020 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -451,6 +451,7 @@ function apiSchemaValidationMiddleware ({ get = true, body = true }) {
       ctx.$pleasure.get = get && get instanceof Schema$6 ? get.parse(getVars, parsingOptions) : getVars;
       ctx.$pleasure.body = body && body instanceof Schema$6 ? body.parse(postVars, parsingOptions) : postVars;
     } catch (err) {
+      console.log('error aqui!!!', err);
       err.code = err.code || 400;
       throw err
     }
@@ -751,7 +752,8 @@ function entityToCrudEndpoints (entity, entityDriver) {
             // reads the entry first and makes it available in the context
             // todo: document about this behavior
             const model = await entityDriver.read(ctx.params.id);
-            ctx.body = model[methodName](ctx.$pleasure.body);
+            console.log({methodName},model[methodName]);
+            ctx.body = await model[methodName](ctx.$pleasure.body);
           }
         }
       };
@@ -1246,7 +1248,7 @@ async function apiSetup ({
   app.use(async (ctx, next) => {
     await next();
     // response
-    if (!ctx.leaveAsIs && ctx.body) {
+    if (!ctx.leaveAsIs && ctx.body !== undefined) {
       ctx.body = {
         code: 200,
         data: ctx.body

@@ -85,6 +85,7 @@ export function apiSchemaValidationMiddleware ({ get = true, body = true }) {
       ctx.$pleasure.get = get && get instanceof Schema ? get.parse(getVars, parsingOptions) : getVars
       ctx.$pleasure.body = body && body instanceof Schema ? body.parse(postVars, parsingOptions) : postVars
     } catch (err) {
+      console.log('error aqui!!!', err)
       err.code = err.code || 400
       throw err
     }

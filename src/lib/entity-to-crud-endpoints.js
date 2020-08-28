@@ -182,7 +182,8 @@ export function entityToCrudEndpoints (entity, entityDriver) {
             // reads the entry first and makes it available in the context
             // todo: document about this behavior
             const model = await entityDriver.read(ctx.params.id)
-            ctx.body = model[methodName](ctx.$pleasure.body)
+            console.log({methodName},model[methodName])
+            ctx.body = await model[methodName](ctx.$pleasure.body)
           }
         }
       }

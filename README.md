@@ -84,6 +84,7 @@ const { data: response } = await axios.get('http://localhost:3000/params', {
     $params
   }
 })
+console.log(response, $params)
 t.deepEqual(response.data, $params)
 ```
 
@@ -273,7 +274,7 @@ t.snapshot(swaggerEndpoint)
 const converted = entityToCrudEndpoints(anEntity, entityDriver)
 t.true(Array.isArray(converted))
 
-t.is(converted.length, 4)
+t.is(converted.length, 5)
 
 converted.forEach(entity => {
   t.notThrows(() => CRUDEndpoint.parse(entity))
@@ -285,9 +286,7 @@ t.truthy(converted[0].read)
 t.truthy(converted[0].update)
 t.truthy(converted[0].delete)
 t.truthy(converted[0].list)
-t.is(converted[1].path, '/papo/sandy-papo')
-t.truthy(converted[1].create)
-t.is(converted[3].path, '/papo/:id/huele-pega')
+t.snapshot(converted)
 ```
 
 <a name="translates-directory-into-routes"></a>
