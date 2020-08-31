@@ -131,7 +131,7 @@ export async function apiSetup ({
   })
 
   const grabClients = async (clientsDir) => {
-    const clients = await jsDirIntoJson(clientsDir, { extensions: ['!lib', '!__tests__', '*.js'] })
+    const clients = await jsDirIntoJson(clientsDir, { extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js'] })
     return Object.keys(clients).map(name => {
       return {
         name: startCase(name).replace(/\s+/g, ''),
