@@ -1,7 +1,7 @@
 {
   "name": "duck-api",
   "author": "Martin Rafael Gonzalez <tin@devtin.io>",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "main": "dist/duck-api.js",
   "module": "dist/duck-api.mjs",
   "license": "MIT",

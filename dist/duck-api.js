@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.3
+ * duck-api v0.0.4
  * (c) 2020-2020 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -562,6 +562,8 @@ function crudEndpointIntoRouter (router, crudEndpoint) {
     const endpoint = crudEndpoint[crud];
     const { get, body, handler, access = () => true } = endpoint;
     const schemaValidation = apiSchemaValidationMiddleware({ get, body });
+
+    // todo: add error middleware validator for described errors
 
     router[crudToMethod[crud]](crudEndpoint.path, responseAccessMiddleware(access), schemaValidation, handler);
   });
@@ -1193,7 +1195,7 @@ async function apiSetup ({
   });
 
   const grabClients = async (clientsDir) => {
-    const clients = await jsDirIntoJson.jsDirIntoJson(clientsDir, { extensions: ['!lib', '!__tests__', '*.js'] });
+    const clients = await jsDirIntoJson.jsDirIntoJson(clientsDir, { extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js'] });
     return Object.keys(clients).map(name => {
       return {
         name: startCase__default$1['default'](name).replace(/\s+/g, ''),
