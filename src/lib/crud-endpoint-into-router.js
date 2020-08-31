@@ -30,6 +30,8 @@ export function crudEndpointIntoRouter (router, crudEndpoint) {
     const { get, body, handler, access = () => true } = endpoint
     const schemaValidation = apiSchemaValidationMiddleware({ get, body })
 
+    // todo: add error middleware validator for described errors
+
     router[crudToMethod[crud]](crudEndpoint.path, responseAccessMiddleware(access), schemaValidation, handler)
   })
 }
