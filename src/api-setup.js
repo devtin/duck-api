@@ -11,7 +11,6 @@ import Promise from 'bluebird'
 import qs from 'query-string'
 import { jsDirIntoJson } from 'js-dir-into-json'
 import pick from 'lodash/pick'
-import mapValues from 'lodash/mapValues'
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc'
 import { packageJson, findPackageJson } from '@pleasure-js/utils'
 import { ApiError } from './lib/api-error.js'
@@ -29,6 +28,7 @@ import { convertToDot } from './lib/utils/convert-to-dot'
 import { registerDuckRacksFromObj } from 'duck-storage'
 import merge from 'deepmerge'
 
+const { Utils } = Duckfficer
 export const defaultKoaBodySettings = {
   multipart: true,
   parsedMethods: ['GET', 'POST', 'PUT', 'PATCH']
@@ -131,7 +131,9 @@ export async function apiSetup ({
   })
 
   const grabClients = async (clientsDir) => {
-    const clients = await jsDirIntoJson(clientsDir, { extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js'] })
+    const clients = await jsDirIntoJson(clientsDir, {
+      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+    })
     return Object.keys(clients).map(name => {
       return {
         name: startCase(name).replace(/\s+/g, ''),
@@ -141,14 +143,18 @@ export async function apiSetup ({
   }
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
-    path2dot: convertToDot })) : []
+    path2dot: convertToDot,
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+  })) : []
 
   let racks
   let racksMethodsAccess
 
   if (racksDir && typeof racksDir === 'string') {
     await registerDuckRacksFromDir(racksDir)
-    racksMethodsAccess = await jsDirIntoJson( racksDir, { pattern: ['methods/**/access.js'] })
+    racksMethodsAccess = await jsDirIntoJson( racksDir, {
+      extensions: ['methods/**/access.js']
+    })
     // todo: create a driver interface
     racks = DuckStorage.listRacks().map(DuckStorage.getRackByName.bind(DuckStorage))
   } else if (typeof racksDir === 'object') {
@@ -180,7 +186,7 @@ export async function apiSetup ({
       },
       pick(rack, Entity.ownPaths),
       {
-        methods: mapMethodAccess(racksMethodsAccess[rack.name].methods)
+        methods: mapMethodAccess(Utils.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ]
     // console.log(JSON.stringify(tomerge, null, 2))

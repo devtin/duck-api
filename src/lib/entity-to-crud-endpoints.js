@@ -3,7 +3,7 @@ import { Duckfficer } from 'duck-storage'
 import { CRUDEndpoint } from './schema'
 import { methodToCrud } from './crud-endpoint-into-router'
 
-const { Schema } = Duckfficer
+const { Schema, Utils } = Duckfficer
 
 const deeplyChangeSetting = (schema, settings) => {
   Object.assign(schema._settings, settings)
@@ -98,7 +98,7 @@ export function entityToCrudEndpoints (entity, entityDriver) {
   if (entityDriver.methods) {
     Object.keys(entityDriver.methods).forEach(methodName => {
       const { input, output, handler, description = `method ${methodName}` } = entityDriver.methods[methodName]
-      const { access, verb } = entity.methods[methodName]
+      const { access, verb = 'post' } = Utils.find(entity, `methods.${methodName}`) || {}
 
       crudEndpoints.push(CRUDEndpoint.parse({
         path: `${ entity.path }/${ kebabCase(methodName) }`,

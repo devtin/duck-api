@@ -21,10 +21,10 @@ import cleanDeep from 'clean-deep';
 import Promise from 'bluebird';
 import qs from 'query-string';
 import { jsDirIntoJson } from 'js-dir-into-json';
-import mapValues from 'lodash/mapValues';
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc';
 import omit from 'lodash/omit';
 import trim from 'lodash/trim';
+import mapValues from 'lodash/mapValues';
 import fs from 'fs';
 import merge from 'deepmerge';
 import { verify, sign } from 'jsonwebtoken';
@@ -575,7 +575,7 @@ async function loadEntitiesFromDir (dir) {
   })
 }
 
-const { Schema: Schema$7 } = Duckfficer;
+const { Schema: Schema$7, Utils } = Duckfficer;
 
 const deeplyChangeSetting = (schema, settings) => {
   Object.assign(schema._settings, settings);
@@ -670,7 +670,7 @@ function entityToCrudEndpoints (entity, entityDriver) {
   if (entityDriver.methods) {
     Object.keys(entityDriver.methods).forEach(methodName => {
       const { input, output, handler, description = `method ${methodName}` } = entityDriver.methods[methodName];
-      const { access, verb } = entity.methods[methodName];
+      const { access, verb = 'post' } = Utils.find(entity, `methods.${methodName}`) || {};
 
       crudEndpoints.push(CRUDEndpoint.parse({
         path: `${ entity.path }/${ kebabCase(methodName) }`,
@@ -904,7 +904,7 @@ function loadPlugin (baseDir = process.cwd(), pluginName) {
   return plugin.bind(pluginState)
 }
 
-const { Schema: Schema$8, Utils } = Duckfficer;
+const { Schema: Schema$8, Utils: Utils$1 } = Duckfficer;
 
 const schemaValidatorToSwagger = (schema) => {
   schema = Schema$8.ensureSchema(schema);
@@ -1010,7 +1010,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
         required: getSchema.schemaAtPath(pathName).settings.required,
         example: getSchema.schemaAtPath(pathName).settings.example,
         enum: getSchema.schemaAtPath(pathName).settings.enum,
-        schema: Utils.find(getSchemaJson, pathName),
+        schema: Utils$1.find(getSchemaJson, pathName),
         style: "simple"
       }
     })).filter(Boolean);
@@ -1048,6 +1048,7 @@ function convertToDot (dirPath) {
   }).join('.')
 }
 
+const { Utils: Utils$2 } = Duckfficer;
 const defaultKoaBodySettings = {
   multipart: true,
   parsedMethods: ['GET', 'POST', 'PUT', 'PATCH']
@@ -1150,7 +1151,9 @@ async function apiSetup ({
   });
 
   const grabClients = async (clientsDir) => {
-    const clients = await jsDirIntoJson(clientsDir, { extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js'] });
+    const clients = await jsDirIntoJson(clientsDir, {
+      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+    });
     return Object.keys(clients).map(name => {
       return {
         name: startCase$1(name).replace(/\s+/g, ''),
@@ -1160,14 +1163,19 @@ async function apiSetup ({
   };
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
-    path2dot: convertToDot })) : [];
+    path2dot: convertToDot,
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+  })) : [];
 
   let racks;
   let racksMethodsAccess;
 
   if (racksDir && typeof racksDir === 'string') {
     await registerDuckRacksFromDir(racksDir);
-    racksMethodsAccess = await jsDirIntoJson( racksDir, { pattern: ['methods/**/access.js'] });
+    racksMethodsAccess = await jsDirIntoJson( racksDir, {
+      extensions: ['methods/**/access.js']
+    });
+    console.log({racksMethodsAccess});
     // todo: create a driver interface
     racks = DuckStorage.listRacks().map(DuckStorage.getRackByName.bind(DuckStorage));
   } else if (typeof racksDir === 'object') {
@@ -1199,7 +1207,7 @@ async function apiSetup ({
       },
       pick(rack, Entity.ownPaths),
       {
-        methods: mapMethodAccess(racksMethodsAccess[rack.name].methods)
+        methods: mapMethodAccess(Utils$2.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ];
     // console.log(JSON.stringify(tomerge, null, 2))

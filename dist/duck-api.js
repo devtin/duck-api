@@ -23,10 +23,10 @@ var cleanDeep = require('clean-deep');
 var Promise = require('bluebird');
 var qs = require('query-string');
 var jsDirIntoJson = require('js-dir-into-json');
-var mapValues = require('lodash/mapValues');
 var schemaValidatorDoc = require('@devtin/schema-validator-doc');
 var omit = require('lodash/omit');
 var trim = require('lodash/trim');
+var mapValues = require('lodash/mapValues');
 var fs = require('fs');
 var merge = require('deepmerge');
 var jsonwebtoken = require('jsonwebtoken');
@@ -68,9 +68,9 @@ var startCase__default$1 = /*#__PURE__*/_interopDefaultLegacy(startCase$1);
 var cleanDeep__default = /*#__PURE__*/_interopDefaultLegacy(cleanDeep);
 var Promise__default = /*#__PURE__*/_interopDefaultLegacy(Promise);
 var qs__default = /*#__PURE__*/_interopDefaultLegacy(qs);
-var mapValues__default = /*#__PURE__*/_interopDefaultLegacy(mapValues);
 var omit__default = /*#__PURE__*/_interopDefaultLegacy(omit);
 var trim__default = /*#__PURE__*/_interopDefaultLegacy(trim);
+var mapValues__default = /*#__PURE__*/_interopDefaultLegacy(mapValues);
 var fs__default = /*#__PURE__*/_interopDefaultLegacy(fs);
 var merge__default = /*#__PURE__*/_interopDefaultLegacy(merge);
 
@@ -620,7 +620,7 @@ async function loadEntitiesFromDir (dir) {
   })
 }
 
-const { Schema: Schema$7 } = duckStorage.Duckfficer;
+const { Schema: Schema$7, Utils } = duckStorage.Duckfficer;
 
 const deeplyChangeSetting = (schema, settings) => {
   Object.assign(schema._settings, settings);
@@ -715,7 +715,7 @@ function entityToCrudEndpoints (entity, entityDriver) {
   if (entityDriver.methods) {
     Object.keys(entityDriver.methods).forEach(methodName => {
       const { input, output, handler, description = `method ${methodName}` } = entityDriver.methods[methodName];
-      const { access, verb } = entity.methods[methodName];
+      const { access, verb = 'post' } = Utils.find(entity, `methods.${methodName}`) || {};
 
       crudEndpoints.push(CRUDEndpoint.parse({
         path: `${ entity.path }/${ kebabCase__default['default'](methodName) }`,
@@ -949,7 +949,7 @@ function loadPlugin (baseDir = process.cwd(), pluginName) {
   return plugin.bind(pluginState)
 }
 
-const { Schema: Schema$8, Utils } = duckStorage.Duckfficer;
+const { Schema: Schema$8, Utils: Utils$1 } = duckStorage.Duckfficer;
 
 const schemaValidatorToSwagger = (schema) => {
   schema = Schema$8.ensureSchema(schema);
@@ -1055,7 +1055,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
         required: getSchema.schemaAtPath(pathName).settings.required,
         example: getSchema.schemaAtPath(pathName).settings.example,
         enum: getSchema.schemaAtPath(pathName).settings.enum,
-        schema: Utils.find(getSchemaJson, pathName),
+        schema: Utils$1.find(getSchemaJson, pathName),
         style: "simple"
       }
     })).filter(Boolean);
@@ -1093,6 +1093,7 @@ function convertToDot (dirPath) {
   }).join('.')
 }
 
+const { Utils: Utils$2 } = duckStorage.Duckfficer;
 const defaultKoaBodySettings = {
   multipart: true,
   parsedMethods: ['GET', 'POST', 'PUT', 'PATCH']
@@ -1195,7 +1196,9 @@ async function apiSetup ({
   });
 
   const grabClients = async (clientsDir) => {
-    const clients = await jsDirIntoJson.jsDirIntoJson(clientsDir, { extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js'] });
+    const clients = await jsDirIntoJson.jsDirIntoJson(clientsDir, {
+      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+    });
     return Object.keys(clients).map(name => {
       return {
         name: startCase__default$1['default'](name).replace(/\s+/g, ''),
@@ -1205,14 +1208,19 @@ async function apiSetup ({
   };
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson.jsDirIntoJson(routesDir, {
-    path2dot: convertToDot })) : [];
+    path2dot: convertToDot,
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+  })) : [];
 
   let racks;
   let racksMethodsAccess;
 
   if (racksDir && typeof racksDir === 'string') {
     await duckStorage.registerDuckRacksFromDir(racksDir);
-    racksMethodsAccess = await jsDirIntoJson.jsDirIntoJson( racksDir, { pattern: ['methods/**/access.js'] });
+    racksMethodsAccess = await jsDirIntoJson.jsDirIntoJson( racksDir, {
+      extensions: ['methods/**/access.js']
+    });
+    console.log({racksMethodsAccess});
     // todo: create a driver interface
     racks = duckStorage.DuckStorage.listRacks().map(duckStorage.DuckStorage.getRackByName.bind(duckStorage.DuckStorage));
   } else if (typeof racksDir === 'object') {
@@ -1244,7 +1252,7 @@ async function apiSetup ({
       },
       pick__default['default'](rack, Entity.ownPaths),
       {
-        methods: mapMethodAccess(racksMethodsAccess[rack.name].methods)
+        methods: mapMethodAccess(Utils$2.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ];
     // console.log(JSON.stringify(tomerge, null, 2))
