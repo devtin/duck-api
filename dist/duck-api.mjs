@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.4
+ * duck-api v0.0.5
  * (c) 2020-2020 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -1175,7 +1175,6 @@ async function apiSetup ({
     racksMethodsAccess = await jsDirIntoJson( racksDir, {
       extensions: ['methods/**/access.js']
     });
-    console.log({racksMethodsAccess});
     // todo: create a driver interface
     racks = DuckStorage.listRacks().map(DuckStorage.getRackByName.bind(DuckStorage));
   } else if (typeof racksDir === 'object') {
