@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.5
+ * duck-api v0.0.6
  * (c) 2020-2020 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
