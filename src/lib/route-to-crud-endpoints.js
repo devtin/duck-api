@@ -1,33 +1,29 @@
-import { CRUDEndpoint } from './schema/crud-endpoint.js'
-import { CRUD } from './schema/crud.js'
+import { CRUDEndpoint, CRUD } from './schema'
 import { isNotNullObj } from './is-not-null-obj.js'
 import pick from 'lodash/pick'
 import omit from 'lodash/omit'
 import { convertToPath } from './utils/convert-to-path'
+import Promise from 'bluebird'
 
-export function routeToCrudEndpoints (routeTree = {}, parentPath = []) {
+export async function routeToCrudEndpoints (routeTree = {}, parentPath = []) {
   const endpoints = []
   if (isNotNullObj(routeTree)) {
-    Object.keys(routeTree).forEach(propName => {
+    await Promise.each(Object.keys(routeTree), async propName => {
       if (propName === '0') {
         throw new Error('reached')
       }
       const value = routeTree[propName]
       const possibleMethod = pick(value, CRUD.ownPaths)
 
-      if (propName === 'someMethod') {
-        CRUD.parse(possibleMethod)
-      }
-
-      if (CRUD.isValid(possibleMethod)) {
+      if (await CRUD.isValid(possibleMethod)) {
         const path = `/${parentPath.concat(propName).map(convertToPath).join('/')}`
-        endpoints.push(CRUDEndpoint.parse(Object.assign({
+        endpoints.push(await CRUDEndpoint.parse(Object.assign({
           path
         }, possibleMethod)))
-        endpoints.push(...routeToCrudEndpoints(omit(value, CRUD.ownPaths), parentPath.concat(propName)))
+        endpoints.push(...await routeToCrudEndpoints(omit(value, CRUD.ownPaths), parentPath.concat(propName)))
         return
       }
-      endpoints.push(...routeToCrudEndpoints(value, parentPath.concat(propName)))
+      endpoints.push(...await routeToCrudEndpoints(value, parentPath.concat(propName)))
     })
   }
   return endpoints.filter(Boolean).sort((endpointA, endpointB) => {

@@ -59,7 +59,7 @@ export function apiSchemaValidationMiddleware ({ get = true, body = true }) {
     }, body)
   }
 
-  return (ctx, next) => {
+  return async (ctx, next) => {
     const getVars = ctx.$pleasure.get
     const postVars = ctx.$pleasure.body
 
@@ -72,20 +72,17 @@ export function apiSchemaValidationMiddleware ({ get = true, body = true }) {
     if (!body && postVars && Object.keys(postVars).length > 0) {
       // todo: throw error
       // todo: log debug
-      // console.log(`avoiding post vars`)
       throw new ApiError()
     }
 
     const { state } = ctx.$pleasure
-    // console.log({ getVars, postVars })
 
     try {
       // todo: document that ctx is passed as part of the state
       const parsingOptions = { state: Object.assign({ ctx }, state), virtualsEnumerable: false }
-      ctx.$pleasure.get = get && get instanceof Schema ? get.parse(getVars, parsingOptions) : getVars
-      ctx.$pleasure.body = body && body instanceof Schema ? body.parse(postVars, parsingOptions) : postVars
+      ctx.$pleasure.get = get && get instanceof Schema ? await get.parse(getVars, parsingOptions) : getVars
+      ctx.$pleasure.body = body && body instanceof Schema ? await body.parse(postVars, parsingOptions) : postVars
     } catch (err) {
-      console.log('error aqui!!!', err)
       err.code = err.code || 400
       throw err
     }

@@ -10,9 +10,40 @@ const schemaValidatorToSwagger = (schema) => {
   schema = Schema.ensureSchema(schema)
 
   const getType = type => {
-    type = type.toLowerCase()
-    const allowed = ['string', 'object' , 'number', 'integer', 'array']
+    if (typeof type === 'object') {
+      if (type.type) {
+        return getType(type.type)
+      }
+      return 'object'
+    }
+    type = ((typeof type === 'function' ? type.name : type)||'string').toLowerCase()
+    const allowed = ['string', 'object' , 'number', 'integer', 'array', 'set']
     return allowed.indexOf(type) >= 0 ? type : 'string'
+  }
+
+  const getOpenApiSettingsFromType = (type, schemaSettings) => {
+    const openApiSettings = {}
+
+    if (getType(type) === 'string') {
+      if (schemaSettings.settings.enum) {
+        Object.assign(openApiSettings, { enum: schemaSettings.settings.enum })
+      }
+    }
+
+    if (getType(type) === 'array') {
+      Object.assign(openApiSettings, {
+        items: getType(schemaSettings.settings.arraySchema) || 'string'
+      })
+    }
+
+    if (getType(type) === 'set') {
+      Object.assign(openApiSettings, {
+        type: 'array',
+        uniqueItems: true
+      })
+    }
+
+    return openApiSettings
   }
 
   const remapContent = (obj) => {
@@ -24,6 +55,7 @@ const schemaValidatorToSwagger = (schema) => {
     if (typeof obj.type === 'string') {
       return {
         type: getType(obj.type),
+        ...getOpenApiSettingsFromType(getType(obj), obj)
       }
     }
 
@@ -58,6 +90,26 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     })
   }
 
+  const getExample = (schema) => {
+    if (schema.settings.example) {
+      return schema.settings.example
+    }
+
+    if (!schema.hasChildren) {
+      return ''
+    }
+
+    const example = {}
+
+    schema.children.forEach(child => {
+      if (!/^_/.test(child.name)) {
+        example[child.name] = getExample(child)
+      }
+    })
+
+    return example
+  }
+
   const getRequestBody = schema => {
     if (typeof schema === 'boolean' || !schema) {
       return
@@ -68,7 +120,7 @@ export function crudEndpointToOpenApi (crudEndpoint) {
       content: {
         "application/json": {
           schema: schemaValidatorToSwagger(schema),
-          example: schema.settings.example
+          example: getExample(schema)
         }
       }
     }
@@ -86,13 +138,16 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     const requestBody = getRequestBody(endpoint.body)
 
     const responses = mapValues(endpoint.output, (response) => {
-      const { description, summary, example } = response
+      const { description, summary, example, code = 200 } = response
       return {
         description,
         summary,
         content: {
           "application/json": {
-            schema: schemaValidatorToSwagger(response.schema)
+            schema: schemaValidatorToSwagger(new Schema({ code: {
+              type: Number,
+                example: 200
+              }, data: response.schema }))
           }
         },
         example
@@ -131,6 +186,7 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     update: patch,
     delete: del,
   } = crudEndpoint
+
   return {
     [crudEndpoint.path.replace(/\/:([^/]+)(\/|$)/, '/{$1}$2')]: {
       get: convert(get),

@@ -52,16 +52,16 @@ export const Query = {
     }
     return v
   },
-  parse (v) {
+  async parse (v) {
     if (!Query.isOperator(v)) {
       if (Object.keys(v).length === 0) {
         return v
       }
 
-      return new Schema({ type: Object, mapSchema: 'Query' }, {
+      return (await new Schema({ type: Object, mapSchema: 'Query' }, {
         name: this.name,
         parent: this instanceof Schema ? this : undefined
-      }).parse(v)
+      }).parse(v))
     }
 
     const operator = Object.keys(v)[0]
@@ -74,13 +74,12 @@ export const Query = {
       throw new Error(err)
     }
 
-    // console.log(`looking for schema at`, this.fullPath, operator, QuerySchema.schemaAtPath(operator))
     return {
-      [operator]: Schema.cloneSchema({
+      [operator]: (await Schema.cloneSchema({
         schema: QuerySchema.schemaAtPath(operator),
         name: `${ this.fullPath }.${ operator }`,
         parent: this instanceof Schema ? this : undefined
-      }).parse(v[operator])
+      }).parse(v[operator]))
     }
   },
   validate (v, { state }) {

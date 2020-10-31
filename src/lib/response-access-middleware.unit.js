@@ -25,7 +25,7 @@ test(`Filters response data`, async t => {
       }
     }
   }
-  const middleware = responseAccessMiddleware(EndpointHandler.schemaAtPath('access').parse(ctx => {
+  const middleware = responseAccessMiddleware(await EndpointHandler.schemaAtPath('access').parse(ctx => {
     if (ctx.user.level === 'nobody') {
       return false
     }

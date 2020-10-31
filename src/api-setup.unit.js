@@ -3,6 +3,7 @@ import io from 'socket.io-client'
 import Koa from 'koa'
 import axios from 'axios'
 import { apiSetup } from './api-setup.js'
+import Promise from 'bluebird'
 
 const app = new Koa()
 let server
@@ -24,11 +25,18 @@ const racksDir = {
             name: String,
             email: String
           },
+          events: {
+            queried: {
+              type: Array
+            }
+          },
           handler (...args) {
             if (!this.called) {
               this.called = []
             }
             this.called.push(...args)
+            this.$emit('queried', args)
+            return args
           }
         }
       }
@@ -88,7 +96,6 @@ test.before(async t => {
         })
         router.get('/some-plugin', ctx => ctx.body = 'some plugin here!')
         router.get('/params', ctx => {
-          console.log(ctx.$pleasure)
           ctx.body = ctx.$pleasure.get
         })
       }]
@@ -99,7 +106,7 @@ test.before(async t => {
   t.log('server started')
 })
 
-test(`Connects socket.io`, t => {
+test(`connects socket.io`, t => {
   return new Promise((resolve, reject) => {
     const socket = io('http://localhost:3000')
     socket.on('connect', () => {
@@ -111,43 +118,44 @@ test(`Connects socket.io`, t => {
   })
 })
 
-test(`Load api plugins`, async t => {
+test(`proxies emitted events via socket.io`, async t => {
+  const socket = io('http://localhost:3000')
+  await new Promise((r) => socket.on('connect', r))
+
+  const eventReceived = []
+
+  socket.on('method', p => {
+    eventReceived.push(p)
+  })
+
+  const { data: { data } } = await axios.post('http://localhost:3000/racks/test', {
+    name: 'Martin',
+    email: 'tin@devtin.io',
+  })
+  t.truthy(data)
+
+  const { data: { data: data2 } } = await axios.post(`http://localhost:3000/racks/test/${ data._id }/query`, {
+    name: 'Martin',
+    email: 'tin@devtin.io',
+  })
+
+  t.true(Array.isArray(data2))
+  t.snapshot(data2)
+  t.true(eventReceived.length > 0)
+})
+
+test(`loads api plugins`, async t => {
   const { data: response } = await axios.get('http://localhost:3000/some-plugin')
   t.is(response.data, 'some plugin here!')
 })
 
-test.skip(`Accepts complex params via post through the get method`, async t => {
-  const $params = {
-    name: 'Martin',
-    skills: [{
-      name: 'developer'
-    }]
-  }
-  const { data: response } = await axios.get('http://localhost:3000/params', {
-    data: {
-      $params
-    }
-  })
-  console.log(response, $params)
-  t.deepEqual(response.data, $params)
-})
-
-test(`Provides information about available endpoints / schemas / entities`, async t => {
+test(`provides information about available endpoints / schemas / entities`, async t => {
   const { data: response } = await axios.get('http://localhost:3000/racks')
   t.true(typeof response.data === 'object')
   t.true(Object.hasOwnProperty.call(response.data, 'test'))
-  /*
-    t.deepEqual(response.data.test, {
-      schema: {
-        name: {
-          type: 'String'
-        }
-      }
-    })
-  */
 })
 
-test(`Filters access`, async t => {
+test(`filters endpoints access`, async t => {
   const { data: response1 } = await axios.get('http://localhost:3000/racks/test/clean')
   t.deepEqual(response1.data, {})
 

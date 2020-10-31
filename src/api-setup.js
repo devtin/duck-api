@@ -12,25 +12,28 @@ import qs from 'query-string'
 import { jsDirIntoJson } from 'js-dir-into-json'
 import pick from 'lodash/pick'
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc'
+import fs from 'fs'
+import path from 'path'
+import { registerDuckRacksFromObj } from 'duck-storage'
+import merge from 'deepmerge'
+import { isPlainObject } from 'is-plain-object'
 import { packageJson, findPackageJson } from '@pleasure-js/utils'
+
 import { ApiError } from './lib/api-error.js'
 import { crudEndpointIntoRouter } from './lib/crud-endpoint-into-router.js'
-import { entityToCrudEndpoints } from './lib/entity-to-crud-endpoints.js'
+import { duckRackToCrudEndpoints } from './lib/duck-rack-to-crud-endpoints.js'
 import { routeToCrudEndpoints } from './lib/route-to-crud-endpoints.js'
-import { clientToCrudEndpoints } from './lib/client-to-crud-endpoint.js'
-import { Entity } from './lib/schema'
+import { gatewayToCrudEndpoints } from './lib/gateway-to-crud-endpoints.js'
+import { Entity,CRUDEndpoint } from './lib/schema'
 import { errorHandling } from './lib/error-handling.js'
 import { loadPlugin } from './lib/load-plugin.js'
 import { crudEndpointToOpenApi } from './lib/crud-endpoint-to-openapi.js'
-import fs from 'fs'
-import path from 'path'
 import { convertToDot } from './lib/utils/convert-to-dot'
-import { registerDuckRacksFromObj } from 'duck-storage'
-import merge from 'deepmerge'
 
 const { Utils } = Duckfficer
 export const defaultKoaBodySettings = {
   multipart: true,
+  jsonStrict: false,
   parsedMethods: ['GET', 'POST', 'PUT', 'PATCH']
 }
 // todo: replace apiDir (and api concept in general) for gateway
@@ -40,11 +43,12 @@ export const defaultKoaBodySettings = {
  * @param config.app - The koa app instance
  * @param config.server - The http server returned by app.listen()
  * @param {String} [config.routesDir] - Path to the directory with the js files to load the API from
+ * @param {String} [config.servicesDir] - Path to the directory with the js files to load the API from
  * @param {String} [config.racksDir] - Path to the entities directory files to load the duck racks from
- * @param {String} [config.clientsDir] - Path to the clients directory
- * @param {String} [config.routesPrefix=/] - Prefix of the routes router
+ * @param {String} [config.gatewaysDir] - Path to the gatewyas directory
+ * @param {String} [config.servicesPrefix=/] - Prefix of the services router
  * @param {String} [config.racksPrefix=/racks] - Prefix of the racks router
- * @param {String} [config.clientsPrefix=/clients] - Prefix of the entities router
+ * @param {String} [config.gatewaysPrefix=/gateways] - Prefix of the entities router
  * @param {String} [config.pluginsDir] - Directory from where to load plugins
  * @param {Object} [options]
  * @param {String[]|Function[]} [options.plugins] - Koa plugins
@@ -64,42 +68,39 @@ export async function apiSetup ({
   app,
   server,
   routesDir,
+  servicesDir,
   racksDir,
-  clientsDir,
+  gatewaysDir,
   racksPrefix,
-  routesPrefix,
-  clientsPrefix,
-  pluginsDir
+  servicesPrefix = '/services',
+  gatewaysPrefix = '/gateways',
+  pluginsPrefix = '/plugins',
+  pluginsDir,
 }, { plugins = [], socketIOSettings = {}, koaBodySettings = defaultKoaBodySettings, customErrorHandling = errorHandling } = {}) {
-  // const { address, port } = server.address()
-  // const apiURL = `http://${ address }:${ port }`
 
   const mainRouter = Router()
-  const { Schema } = Duckfficer
 
-  const routesRouter = Router({
-    prefix: routesPrefix
+  const servicesRouter = Router({
+    prefix: servicesPrefix
   })
 
   const racksRouter = Router({
     prefix: racksPrefix
   })
 
-  const clientsRouter = Router({
-    prefix: clientsPrefix
+  const gatewaysRouter = Router({
+    prefix: gatewaysPrefix
   })
 
-  /*
-    app.use((ctx, next) => {
-      console.log(`server re`, ctx.request.url)
-      return next()
-    })
-  */
+  const pluginsRouter = Router({
+    prefix: pluginsPrefix
+  })
+
   app.use(koaNTS())
+  app.use(customErrorHandling)
 
   // required for the crud logic
   app.use(koaBody(koaBodySettings))
-  app.use(customErrorHandling)
 
   // ctx setup
   app.use((ctx, next) => {
@@ -127,17 +128,18 @@ export async function apiSetup ({
       delete ctx.request.body.$params
     }
     ctx.$pleasure.body = ctx.request.body
+
     return next()
   })
 
-  const grabClients = async (clientsDir) => {
-    const clients = await jsDirIntoJson(clientsDir, {
+  const grabGateways = async (gatewayDir) => {
+    const gateways = await jsDirIntoJson(gatewayDir, {
       extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
     })
-    return Object.keys(clients).map(name => {
+    return Object.keys(gateways).map(name => {
       return {
         name: startCase(name).replace(/\s+/g, ''),
-        methods: clients[name].methods
+        methods: gateways[name].methods
       }
     })
   }
@@ -149,17 +151,33 @@ export async function apiSetup ({
 
   let racks
   let racksMethodsAccess
+  let racksCRUDAccess
 
   if (racksDir && typeof racksDir === 'string') {
     await registerDuckRacksFromDir(racksDir)
     racksMethodsAccess = await jsDirIntoJson( racksDir, {
-      extensions: ['methods/**/access.js']
+      extensions: [
+        '!__tests__',
+        '!*.unit.js',
+        'methods/**/access.js'
+      ]
+    })
+    racksCRUDAccess = await jsDirIntoJson( racksDir, {
+      extensions: [
+        'access.js'
+      ]
     })
     // todo: create a driver interface
-    racks = DuckStorage.listRacks().map(DuckStorage.getRackByName.bind(DuckStorage))
+    racks = DuckStorage.listRacks().map((name) => {
+      const duckRack = DuckStorage.getRackByName(name)
+      return Object.assign({
+        access: Utils.find(racksCRUDAccess, `${name}.access`),
+        },
+        duckRack)
+    })
   } else if (typeof racksDir === 'object') {
     racksMethodsAccess = racksDir
-    const racksRegistered = registerDuckRacksFromObj(racksDir)
+    const racksRegistered = await registerDuckRacksFromObj(racksDir)
     racks = Object.keys(racksRegistered).map(rackName => {
       return racksRegistered[rackName]
     })
@@ -179,7 +197,7 @@ export async function apiSetup ({
     return mappedMethods
   }
 
-  racks = racks.map(rack => {
+  racks = await Promise.map(racks, async rack => {
     const tomerge = [
       {
         file: rack.name,
@@ -189,50 +207,57 @@ export async function apiSetup ({
         methods: mapMethodAccess(Utils.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ]
-    // console.log(JSON.stringify(tomerge, null, 2))
     const pl = merge.all(tomerge, {
-      isMergeableObject (value) {
-        return value && typeof value === 'object' && !(value instanceof Schema) && !(value instanceof Duck) && !(value instanceof DuckRack)
-      }
+      isMergeableObject: isPlainObject
     })
     return Entity.parse(pl)
   })
 
-  const racksEndpoints = flattenDeep(racks.map(entity => {
-    return entityToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
+  const racksEndpoints = flattenDeep(await Promise.map(racks, entity => {
+    return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }))
 
-  const clients = clientsDir ? await grabClients(clientsDir) : []
-  const clientsEndpoints = flattenDeep(clients.map(clientToCrudEndpoints))
+  const gateways = gatewaysDir ? await grabGateways(gatewaysDir) : []
+  const gatewaysEndpoints = flattenDeep(await Promise.map(gateways, gatewayToCrudEndpoints))
+
+  const services = gatewaysDir ? await grabGateways(servicesDir) : []
+  const servicesEndpoints = flattenDeep(await Promise.map(services, gatewayToCrudEndpoints))
 
   const io = socketIo(server, socketIOSettings)
 
-  // console.log({ entities })
   const registeredEntities = {}
 
   racks.forEach(({ name, duckModel }) => {
-    registeredEntities[kebabCase(name)] = cleanDeep(schemaValidatorToJSON(duckModel, { includeAllSettings: false }))
+    registeredEntities[kebabCase(name)] = cleanDeep(schemaValidatorToJSON(duckModel.schema, { includeAllSettings: false }))
   })
 
-  // console.log({ registeredEntities })
   // return schemas
   racksRouter.get('/', ctx => {
     // todo: filter per user-permission
     ctx.body = registeredEntities
   })
 
-  await Promise.each(plugins.map(loadPlugin.bind(null, pluginsDir)), plugin => {
-    return plugin({ router: mainRouter, app, server, io })
+  const pluginsEndpoints = []
+
+  await Promise.each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
+    const endpoints = plugin({ router: mainRouter, app, server, io })
+    if (endpoints) {
+      pluginsEndpoints.push(...await Promise.map(endpoints, schema => {
+        return CRUDEndpoint.parse(schema)
+      }))
+    }
   })
 
   // event wiring
   // todo: permissions
+  // todo: move to a plugin
   const wireIo = ev => io.emit.bind(io, ev)
   DuckStorage.on('create', wireIo('create'))
   DuckStorage.on('read', wireIo('read'))
   DuckStorage.on('update', wireIo('update'))
   DuckStorage.on('delete', wireIo('delete'))
   DuckStorage.on('list', wireIo('list'))
+  DuckStorage.on('method', wireIo('method'))
 
   app.use(async (ctx, next) => {
     await next()
@@ -245,11 +270,13 @@ export async function apiSetup ({
     }
   })
 
-  routesEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, routesRouter))
+  servicesEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, servicesRouter))
   racksEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, racksRouter))
-  clientsEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, clientsRouter))
+  gatewaysEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, gatewaysRouter))
+  pluginsEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, pluginsRouter))
+  routesEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, mainRouter))
 
-  const endpointsToSwagger = (endpoints, {
+  const endpointsToSwagger = async (endpoints, {
     prefix = '/',
     title = packageJson().name,
     version = packageJson().version,
@@ -262,13 +289,27 @@ export async function apiSetup ({
         description,
         version
       },
-      paths: endpoints.map(crudEndpointToOpenApi).reduce((output, newRoute) => {
+      paths: (await Promise.map(endpoints, crudEndpointToOpenApi)).reduce((output, newRoute) => {
         return Object.assign({}, output, newRoute)
       }, {}),
       servers: [
         {
           url: prefix,
           description: "running server"
+        }
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+          }
+        }
+      },
+      security: [
+        {
+          "bearerAuth": []
         }
       ]
     }
@@ -277,23 +318,28 @@ export async function apiSetup ({
   if (process.env.NODE_ENV !== 'production') {
     const swaggerHtml = fs.readFileSync(path.join(findPackageJson(__dirname), '../src/lib/fixtures/swagger.html')).toString()
 
-    const routesSwagger = JSON.stringify(endpointsToSwagger(routesEndpoints, {
-      prefix: routesPrefix
+    const servicesSwagger = JSON.stringify(await endpointsToSwagger(servicesEndpoints, {
+      prefix: servicesPrefix
     }), null, 2)
 
-    const racksSwagger = JSON.stringify(endpointsToSwagger(racksEndpoints, {
+    const racksSwagger = JSON.stringify(await endpointsToSwagger(racksEndpoints, {
       prefix: racksPrefix
     }), null, 2)
 
-    const clientsSwagger = JSON.stringify(endpointsToSwagger(clientsEndpoints, {
-      prefix: clientsPrefix
+    const gatewaysSwagger = JSON.stringify(await endpointsToSwagger(gatewaysEndpoints, {
+      prefix: gatewaysPrefix
     }), null, 2)
 
-    routesRouter.get('/swagger.json', async (ctx) => {
+    const pluginsSwagger = JSON.stringify(await endpointsToSwagger(pluginsEndpoints, {
+      prefix: pluginsPrefix
+    }), null, 2)
+
+    servicesRouter.get('/swagger.json', async (ctx) => {
       ctx.leaveAsIs = true
-      ctx.body = routesSwagger
+      ctx.body = servicesSwagger
     })
-    routesRouter.get('/docs', async (ctx) => {
+
+    servicesRouter.get('/docs', async (ctx) => {
       ctx.leaveAsIs = true
       ctx.body = swaggerHtml
     })
@@ -307,11 +353,22 @@ export async function apiSetup ({
       ctx.body = swaggerHtml
     })
 
-    clientsRouter.get('/swagger.json', async (ctx) => {
+    gatewaysRouter.get('/swagger.json', async (ctx) => {
       ctx.leaveAsIs = true
-      ctx.body = clientsSwagger
+      ctx.body = gatewaysSwagger
     })
-    clientsRouter.get('/docs', async (ctx) => {
+
+    gatewaysRouter.get('/docs', async (ctx) => {
+      ctx.leaveAsIs = true
+      ctx.body = swaggerHtml
+    })
+
+    pluginsRouter.get('/swagger.json', async (ctx) => {
+      ctx.leaveAsIs = true
+      ctx.body = pluginsSwagger
+    })
+
+    pluginsRouter.get('/docs', async (ctx) => {
       ctx.leaveAsIs = true
       ctx.body = swaggerHtml
     })
@@ -320,19 +377,22 @@ export async function apiSetup ({
   app.use(mainRouter.routes())
   app.use(mainRouter.allowedMethods())
 
-  app.use(routesRouter.routes())
-  app.use(routesRouter.allowedMethods())
+  app.use(servicesRouter.routes())
+  app.use(servicesRouter.allowedMethods())
 
   app.use(racksRouter.routes())
   app.use(racksRouter.allowedMethods())
 
-  app.use(clientsRouter.routes())
-  app.use(clientsRouter.allowedMethods())
+  app.use(gatewaysRouter.routes())
+  app.use(gatewaysRouter.allowedMethods())
+
+  app.use(pluginsRouter.routes())
+  app.use(pluginsRouter.allowedMethods())
 
   // not found
   app.use(() => {
     throw new ApiError(404)
   })
 
-  return { io, mainRouter, routesRouter, racksRouter, routesEndpoints, racksEndpoints, clientsRouter }
+  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter }
 }

@@ -1,8 +1,9 @@
 import kebabCase from 'lodash/kebabCase'
 import { CRUDEndpoint } from './schema'
+import Promise from 'bluebird'
 
-export function clientToCrudEndpoints(client) {
-  return Object.keys(client.methods).map(methodName => {
+export function gatewayToCrudEndpoints(client) {
+  return Promise.map(Object.keys(client.methods), async methodName => {
     const method = client.methods[methodName]
     methodName = kebabCase(methodName)
 

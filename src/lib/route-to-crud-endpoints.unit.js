@@ -1,7 +1,7 @@
 import test from 'ava'
 import {routeToCrudEndpoints} from './route-to-crud-endpoints'
 
-test('converts route tree into crud endpoint', t => {
+test('converts route tree into crud endpoint', async t => {
   const routeTree = {
     somePath: {
       to: {
@@ -44,7 +44,7 @@ test('converts route tree into crud endpoint', t => {
     }
   }
 
-  const endpoints = routeToCrudEndpoints(routeTree)
+  const endpoints = await routeToCrudEndpoints(routeTree)
   t.truthy(endpoints)
   t.snapshot(endpoints)
 })

@@ -2,7 +2,7 @@ import { CRUD } from './crud.js'
 import startCase from 'lodash/startCase.js'
 import { Access } from './access.js'
 import { isNotNullObj } from '../is-not-null-obj'
-import { Duckfficer } from 'duck-storage'
+import { Duckfficer, Duck } from 'duck-storage'
 import { Method } from './method'
 
 const { Schema } = Duckfficer
@@ -41,17 +41,14 @@ const Model = new Schema({
     type: Object
 }, {
   validate (v) {
-    if (!(v instanceof Schema)) {
+    if (!(v instanceof Duck)) {
       this.throwError('Invalid model', {field: this, value: v})
     }
   },
   cast (v) {
-    if (isNotNullObj(v) && !(v instanceof Schema) && Object.keys(v).length > 0 && v.schema) {
-      const schema = Schema.cloneSchema({ schema: Schema.ensureSchema(v.schema) })
-      if (v.methods) {
-        schema._methods = v.methods
-      }
-      return schema
+    if (isNotNullObj(v) && !(v instanceof Duck) && Object.keys(v).length > 0 && v.schema) {
+      const schema = Schema.ensureSchema(v.schema)
+      return new Duck({ schema })
     }
     return v
   }

@@ -4,7 +4,7 @@ export { apiSchemaValidationMiddleware } from './lib/api-schema-validation-middl
 export { crudEndpointIntoRouter } from './lib/crud-endpoint-into-router.js'
 export { loadApiCrudDir } from './lib/load-api-crud-dir.js'
 export { loadEntitiesFromDir } from './lib/load-entities-from-dir.js'
-export { entityToCrudEndpoints } from './lib/entity-to-crud-endpoints.js'
+export { duckRackToCrudEndpoints } from './lib/duck-rack-to-crud-endpoints.js'
 export { apiSetup } from './api-setup.js'
 export * as DuckStorage from 'duck-storage'
 export * as plugins from './lib/plugins'

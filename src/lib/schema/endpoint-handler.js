@@ -10,8 +10,8 @@ Transformers.Input = {
     autoCast: true
   },
   cast (v) {
-    if (isNotNullObj(v)) {
-      return Schema.ensureSchema(v)
+    if (isNotNullObj(v) || (typeof v === 'function' &&  Transformers[v.name])) {
+      return Schema.ensureSchema(typeof v === 'function' ? { type: v } : v)
     }
     return v
   },

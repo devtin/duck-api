@@ -19,18 +19,18 @@ $ yarn add duck-api
 
 ## Features
 
-- [Connects socket.io](#connects-socket-io)
-- [Load api plugins](#load-api-plugins)
-- [Accepts complex params via post through the get method](#accepts-complex-params-via-post-through-the-get-method)
-- [Provides information about available endpoints / schemas / entities](#provides-information-about-available-endpoints-schemas-entities)
-- [Filters access](#filters-access)
+- [connects socket.io](#connects-socket-io)
+- [proxies emitted events via socket.io](#proxies-emitted-events-via-socket-io)
+- [loads api plugins](#loads-api-plugins)
+- [provides information about available endpoints / schemas / entities](#provides-information-about-available-endpoints-schemas-entities)
+- [filters endpoints access](#filters-endpoints-access)
 - [Provides a way of querying multiple endpoints at a time](#provides-a-way-of-querying-multiple-endpoints-at-a-time)
 - [Restricts access via get variables](#restricts-access-via-get-variables)
 - [Restricts post / patch / delete body](#restricts-post-patch-delete-body)
-- [converts client into a crud-endpoint](#converts-client-into-a-crud-endpoint)
 - [Hooks ApiEndpoint into a koa router](#hooks-api-endpoint-into-a-koa-router)
 - [converts a crud endpoint in an open api route](#converts-a-crud-endpoint-in-an-open-api-route)
 - [Converts an entity into an array of crud endpoints](#converts-an-entity-into-an-array-of-crud-endpoints)
+- [converts client into a crud-endpoint](#converts-client-into-a-crud-endpoint)
 - [translates directory into routes](#translates-directory-into-routes)
 - [Load entities from directory](#load-entities-from-directory)
 - [Signs JWT sessions](#signs-jwt-sessions)
@@ -42,7 +42,7 @@ $ yarn add duck-api
 
 <a name="connects-socket-io"></a>
 
-## Connects socket.io
+## connects socket.io
 
 
 ```js
@@ -57,9 +57,40 @@ return new Promise((resolve, reject) => {
 })
 ```
 
-<a name="load-api-plugins"></a>
+<a name="proxies-emitted-events-via-socket-io"></a>
 
-## Load api plugins
+## proxies emitted events via socket.io
+
+
+```js
+const socket = io('http://localhost:3000')
+await new Promise((r) => socket.on('connect', r))
+
+const eventReceived = []
+
+socket.on('method', p => {
+  eventReceived.push(p)
+})
+
+const { data: { data } } = await axios.post('http://localhost:3000/racks/test', {
+  name: 'Martin',
+  email: 'tin@devtin.io',
+})
+t.truthy(data)
+
+const { data: { data: data2 } } = await axios.post(`http://localhost:3000/racks/test/${ data._id }/query`, {
+  name: 'Martin',
+  email: 'tin@devtin.io',
+})
+
+t.true(Array.isArray(data2))
+t.snapshot(data2)
+t.true(eventReceived.length > 0)
+```
+
+<a name="loads-api-plugins"></a>
+
+## loads api plugins
 
 
 ```js
@@ -67,50 +98,20 @@ const { data: response } = await axios.get('http://localhost:3000/some-plugin')
 t.is(response.data, 'some plugin here!')
 ```
 
-<a name="accepts-complex-params-via-post-through-the-get-method"></a>
-
-## Accepts complex params via post through the get method
-
-
-```js
-const $params = {
-  name: 'Martin',
-  skills: [{
-    name: 'developer'
-  }]
-}
-const { data: response } = await axios.get('http://localhost:3000/params', {
-  data: {
-    $params
-  }
-})
-console.log(response, $params)
-t.deepEqual(response.data, $params)
-```
-
 <a name="provides-information-about-available-endpoints-schemas-entities"></a>
 
-## Provides information about available endpoints / schemas / entities
+## provides information about available endpoints / schemas / entities
 
 
 ```js
 const { data: response } = await axios.get('http://localhost:3000/racks')
 t.true(typeof response.data === 'object')
 t.true(Object.hasOwnProperty.call(response.data, 'test'))
-/*
-  t.deepEqual(response.data.test, {
-    schema: {
-      name: {
-        type: 'String'
-      }
-    }
-  })
-*/
 ```
 
-<a name="filters-access"></a>
+<a name="filters-endpoints-access"></a>
 
-## Filters access
+## filters endpoints access
 
 
 ```js
@@ -148,19 +149,19 @@ const Api = apiSchemaValidationMiddleware({
 })
 
 const none = Object.assign({}, ctxStub, requestCtx.none)
-Api(none, fnStub)
+await Api(none, fnStub)
 
 t.truthy(none.$pleasure.get)
 t.is(Object.keys(none.$pleasure.get).length, 0)
 
 const quantity = Object.assign({}, ctxStub, requestCtx.quantity)
-Api(quantity, fnStub)
+await Api(quantity, fnStub)
 
 t.truthy(quantity.$pleasure.get)
 t.is(quantity.$pleasure.get.quantity, 3)
 
 const wrongQuantity = Object.assign({}, ctxStub, requestCtx.wrongQuantity)
-const error = t.throws(() => Api(wrongQuantity, fnStub))
+const error = await t.throwsAsync(() => Api(wrongQuantity, fnStub))
 
 t.is(error.message, 'Data is not valid')
 t.is(error.errors.length, 1)
@@ -188,52 +189,16 @@ const Api = apiSchemaValidationMiddleware({
 
 const fullContact = Object.assign({}, ctxStub, requestCtx.fullContact)
 const wrongContact = Object.assign({}, ctxStub, requestCtx.wrongContact)
-t.notThrows(() => Api(fullContact, fnStub))
+await t.notThrowsAsync(() => Api(fullContact, fnStub))
 
 t.is(fullContact.$pleasure.body.name, 'Martin Rafael Gonzalez')
 t.true(fullContact.$pleasure.body.birthday instanceof Date)
 
-const error = t.throws(() => Api(wrongContact, fnStub))
+const error = await t.throwsAsync(() => Api(wrongContact, fnStub))
 t.is(error.message, 'Data is not valid')
 t.is(error.errors.length, 1)
 t.is(error.errors[0].message, `Invalid date`)
 t.is(error.errors[0].field.fullPath, `birthday`)
-```
-
-<a name="converts-client-into-a-crud-endpoint"></a>
-
-## converts client into a crud-endpoint
-
-
-```js
-const client = Client.parse({
-  name: 'PayPal',
-  methods: {
-    issueTransaction: {
-      description: 'Issues a transaction',
-      input: {
-        name: String
-      },
-      handler ({ name }) {
-        return name
-      }
-    },
-    issueRefund: {
-      description: 'Issues a refund',
-      input: {
-        transactionId: Number
-      },
-      handler ({transactionId}) {
-        return transactionId
-      }
-    }
-  }
-})
-
-const crudEndpoints = clientToCrudEndpoints(client)
-crudEndpoints.forEach(crudEndpoint => {
-  t.true(CRUDEndpoint.isValid(crudEndpoint))
-})
 ```
 
 <a name="hooks-api-endpoint-into-a-koa-router"></a>
@@ -271,7 +236,7 @@ t.snapshot(swaggerEndpoint)
 
 
 ```js
-const converted = entityToCrudEndpoints(anEntity, entityDriver)
+const converted = await duckRackToCrudEndpoints(anEntity, entityDriver)
 t.true(Array.isArray(converted))
 
 t.is(converted.length, 5)
@@ -287,6 +252,42 @@ t.truthy(converted[0].update)
 t.truthy(converted[0].delete)
 t.truthy(converted[0].list)
 t.snapshot(converted)
+```
+
+<a name="converts-client-into-a-crud-endpoint"></a>
+
+## converts client into a crud-endpoint
+
+
+```js
+const client = await Client.parse({
+  name: 'PayPal',
+  methods: {
+    issueTransaction: {
+      description: 'Issues a transaction',
+      input: {
+        name: String
+      },
+      handler ({ name }) {
+        return name
+      }
+    },
+    issueRefund: {
+      description: 'Issues a refund',
+      input: {
+        transactionId: Number
+      },
+      handler ({transactionId}) {
+        return transactionId
+      }
+    }
+  }
+})
+
+const crudEndpoints = gatewayToCrudEndpoints(client)
+await Promise.each(crudEndpoints, async crudEndpoint => {
+  t.true(await CRUDEndpoint.isValid(crudEndpoint))
+})
 ```
 
 <a name="translates-directory-into-routes"></a>
@@ -432,7 +433,7 @@ const ctx = (level = 'nobody', body = Body) => {
     }
   }
 }
-const middleware = responseAccessMiddleware(EndpointHandler.schemaAtPath('access').parse(ctx => {
+const middleware = responseAccessMiddleware(await EndpointHandler.schemaAtPath('access').parse(ctx => {
   if (ctx.user.level === 'nobody') {
     return false
   }
@@ -509,7 +510,7 @@ const routeTree = {
   }
 }
 
-const endpoints = routeToCrudEndpoints(routeTree)
+const endpoints = await routeToCrudEndpoints(routeTree)
 t.truthy(endpoints)
 t.snapshot(endpoints)
 ```
@@ -520,7 +521,7 @@ t.snapshot(endpoints)
 
 
 ```js
-const parsed = Query.parse({
+const parsed = await Query.parse({
   address: {
     zip: {
       $gt: 34
@@ -559,11 +560,12 @@ Validates incoming traffic against given schemas
 
 <br><a name="responseAccessMiddleware"></a>
 
-### responseAccessMiddleware(access) ⇒ <code>function</code>
+### responseAccessMiddleware(access, thisContext) ⇒ <code>function</code>
 
 | Param | Type | Description |
 | --- | --- | --- |
 | access | <code>function</code> | callback function receives ctx |
+| thisContext | <code>object</code> | callback function receives ctx |
 
 
 <br><a name="crudEndpointIntoRouter"></a>
@@ -606,14 +608,14 @@ Look for JavaScript files in given directory
 Reads given directory looking for *.js files and parses them into
 
 
-<br><a name="entityToCrudEndpoints"></a>
+<br><a name="duckRackToCrudEndpoints"></a>
 
-### entityToCrudEndpoints(entity, entityDriver) ⇒
+### duckRackToCrudEndpoints(entity, duckRack) ⇒
 
-| Param |
-| --- |
-| entity | 
-| entityDriver | 
+| Param | Type |
+| --- | --- |
+| entity |  | 
+| duckRack | <code>Object</code> | 
 
 **Returns**: Promise<[]|*>  
 

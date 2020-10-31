@@ -36,17 +36,21 @@ import { apiSchemaValidationMiddleware } from '../api-schema-validation-middlewa
  *   ]
  * }
  */
-export function jwtAccess (jwtKey, authorizer, {
-  jwt: {
-    cookieName = 'accessToken',
-    headerName = 'authorization',
-    algorithm = 'HS256',
-    expiresIn = 15 * 60, // 15 minutes
-    body = true
+export function jwtAccess ({
+  cookieName = 'accessToken',
+  headerName = 'authorization',
+  algorithm = 'HS256',
+  expiresIn = 15 * 60, // 15 minutes
+  body = true,
+  jwtKey,
+  auth: {
+
   },
   authPath = 'auth',
-  revokePath = 'revoke'
-} = { jwt: {} }) {
+  revokePath = 'revoke',
+  authorize,
+  serializer // async function that receives a payload and returns the payload that needs to be serialized
+} = {}) {
   return function ({ router, app, server, io, pls }) {
     /**
      *
@@ -73,32 +77,14 @@ export function jwtAccess (jwtKey, authorizer, {
       return next()
     })
 
-    /**
-     * Creating auth
-     * - Validate requested data
-     * - Sign returned object into a JWT using provided secret
-     * - Generate a next token
-     * - Create cookie with JWT
-     * - Return JWT
-     */
-    router.use(authPath, apiSchemaValidationMiddleware({ body }), async (ctx) => {
-      // what if an user as already been set?
-      const accessToken = sign(await authorizer(ctx.$pleasure.body), jwtKey, {
-        algorithm,
-        expiresIn
-      })
-
-      ctx.cookies.set(cookieName, accessToken)
-      ctx.body = { accessToken }
-    })
-
-    router.use(revokePath, async ctx => {
-      /*
-            ctx.body = sign(await authorizer(ctx.$pleasure.body), jwtKey, {
-              algorithm,
-              expiryIn
-            })
-      */
-    })
+    return [
+      {
+        path: authPath,
+        description: 'exchanges credentials for access and refresh tokens',
+        async create (ctx) {
+          await sign(await authorizer(ctx))
+        }
+      }
+    ]
   }
 }
