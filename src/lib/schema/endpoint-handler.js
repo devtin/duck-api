@@ -46,10 +46,8 @@ Transformers.Output = (() => {
         }
       }
 
-      return v ? {
-        200: {
-          schema: isNotNullObj(v) ? Schema.ensureSchema(v) : {}
-        }
+      return isNotNullObj(v) ? {
+        200: Schema.ensureSchema(v)
       } : false
     },
     validate (v) {

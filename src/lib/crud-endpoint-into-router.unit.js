@@ -9,7 +9,6 @@ const koaRouterMock = {
   get () {},
   patch () {},
   delete () {},
-  put () {}
 }
 
 test.beforeEach(t => {

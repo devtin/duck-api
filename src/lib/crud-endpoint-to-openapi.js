@@ -137,20 +137,26 @@ export function crudEndpointToOpenApi (crudEndpoint) {
 
     const requestBody = getRequestBody(endpoint.body)
 
-    const responses = mapValues(endpoint.output, (response) => {
-      const { description, summary, example, code = 200 } = response
+    const responses = mapValues(endpoint.output, (response, code) => {
+      // const { description, summary, example } = response
+      const outputSchema = new Schema({
+        code: {
+          type: Number,
+          example: code
+        },
+        data: response
+      })
+
       return {
-        description,
-        summary,
+        description: `${code} response`,
+        // summary,
         content: {
           "application/json": {
-            schema: schemaValidatorToSwagger(new Schema({ code: {
-              type: Number,
-                example: 200
-              }, data: response.schema }))
+            schema: schemaValidatorToSwagger(outputSchema),
+            example: getExample(outputSchema)
           }
         },
-        example
+        // example
       }
     })
 

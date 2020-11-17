@@ -107,10 +107,8 @@ Transformers.Output = (() => {
         }
       }
 
-      return v ? {
-        200: {
-          schema: isNotNullObj(v) ? Schema$1.ensureSchema(v) : {}
-        }
+      return isNotNullObj(v) ? {
+        200: Schema$1.ensureSchema(v)
       } : false
     },
     validate (v) {
@@ -674,11 +672,12 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
 
   if (duckRack.methods) {
     await Promise.each(Object.keys(duckRack.methods), async methodName => {
+      const thePath = `${ entity.path }/${ kebabCase(methodName) }`;
       const { input, output, handler, description = `method ${methodName}` } = duckRack.methods[methodName];
-      const { access, verb = 'post' } = Utils.find(entity, `methods.${methodName}`) || {};
+      const { access, verb = 'post' } = Utils.find(duckRack, `_methods.${methodName}`) || {};
 
       crudEndpoints.push(await CRUDEndpoint.parse({
-        path: `${ entity.path }/${ kebabCase(methodName) }`,
+        path: thePath,
         [methodToCrud[verb]]: {
           access,
           description,
@@ -761,13 +760,14 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
   const registerMethods = async (methods = {}, parentPath = '') => {
     return Promise.each(Object.keys(methods), async methodName => {
       const method = methods[methodName];
+      console.log({ methodName }, method);
       const dotPath2Path = (dotPath = '') => {
         return dotPath.split(/\./g).map(kebabCase).join('/')
       };
       const methodPath = dotPath2Path(parentPath);
       const crudEndpointPayload = {
         path: `${ entity.path }/:id/${methodPath}${ parentPath ? '/' : ''}${ kebabCase(methodName) }`,
-        create: {
+        [methodToCrud[method.verb || 'post']]: {
           example: method.example,
           description: method.description || `method ${methodName}`,
           get: {
@@ -779,6 +779,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
           body: Utils.find(method, 'data.router.input') || method.input,
           output: Utils.find(method, 'data.router.output') || method.output,
           async handler (ctx) {
+            console.log('handling', methodName);
             const { id } = ctx.params;
             const { _v } = ctx.$pleasure.get;
             const getPayload = async () => {
@@ -788,7 +789,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
               return ctx.$pleasure.body
             };
             const getValidate = () => {
-              const validator = Utils.find(method, 'data.router.validate').bind();
+              const validator = Utils.find(method, 'data.router.validate');
               if (validator) {
                 return (doc) => {
                   return validator(doc, ctx)
@@ -798,6 +799,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
             const payload = await getPayload();
             const validate = getValidate();
             const applyPayload = { id, _v, path: methodPath, method: methodName, payload, validate, state: ctx.$pleasure.state };
+            console.log({applyPayload});
             ctx.body = (await duckRack.apply(applyPayload)).methodResult;
           }
         }
@@ -1089,20 +1091,26 @@ function crudEndpointToOpenApi (crudEndpoint) {
 
     const requestBody = getRequestBody(endpoint.body);
 
-    const responses = mapValues(endpoint.output, (response) => {
-      const { description, summary, example, code = 200 } = response;
+    const responses = mapValues(endpoint.output, (response, code) => {
+      // const { description, summary, example } = response
+      const outputSchema = new Schema$8({
+        code: {
+          type: Number,
+          example: code
+        },
+        data: response
+      });
+
       return {
-        description,
-        summary,
+        description: `${code} response`,
+        // summary,
         content: {
           "application/json": {
-            schema: schemaValidatorToSwagger(new Schema$8({ code: {
-              type: Number,
-                example: 200
-              }, data: response.schema }))
+            schema: schemaValidatorToSwagger(outputSchema),
+            example: getExample(outputSchema)
           }
         },
-        example
+        // example
       }
     });
 

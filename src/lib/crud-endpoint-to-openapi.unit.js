@@ -34,10 +34,13 @@ test.before(async () => {
         },
         output: {
           200: {
-            id: String
+            id: {
+              type: String,
+              example: '123'
+            }
           }
         },
-        handler() {
+        handler () {
 
         }
       },
