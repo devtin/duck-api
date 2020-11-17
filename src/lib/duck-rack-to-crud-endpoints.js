@@ -189,7 +189,6 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
   const registerMethods = async (methods = {}, parentPath = '') => {
     return Promise.each(Object.keys(methods), async methodName => {
       const method = methods[methodName]
-      console.log({ methodName }, method)
       const dotPath2Path = (dotPath = '') => {
         return dotPath.split(/\./g).map(kebabCase).join('/')
       }
@@ -208,7 +207,6 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
           body: Utils.find(method, 'data.router.input') || method.input,
           output: Utils.find(method, 'data.router.output') || method.output,
           async handler (ctx) {
-            console.log('handling', methodName)
             const { id } = ctx.params
             const { _v } = ctx.$pleasure.get
             const getPayload = async () => {
@@ -228,7 +226,6 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
             const payload = await getPayload()
             const validate = getValidate()
             const applyPayload = { id, _v, path: methodPath, method: methodName, payload, validate, state: ctx.$pleasure.state }
-            console.log({applyPayload})
             ctx.body = (await duckRack.apply(applyPayload)).methodResult
           }
         }
