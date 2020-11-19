@@ -251,7 +251,21 @@ export async function apiSetup ({
   // event wiring
   // todo: permissions
   // todo: move to a plugin
-  const wireIo = ev => io.emit.bind(io, ev)
+  const getDeliveryDestination = (event, payload) => {
+
+    // todo: compute the socket.io groups
+    return io
+  }
+
+  const wireIo = (ev) => {
+    return (payload) => {
+      const deliveryDestination = getDeliveryDestination(ev, payload)
+      if (!deliveryDestination) {
+        return
+      }
+      return deliveryDestination.emit(ev, payload)
+    }
+  }
   DuckStorage.on('create', wireIo('create'))
   DuckStorage.on('read', wireIo('read'))
   DuckStorage.on('update', wireIo('update'))

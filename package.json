@@ -1,7 +1,7 @@
 {
   "name": "duck-api",
   "author": "Martin Rafael Gonzalez <tin@devtin.io>",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "main": "dist/duck-api.js",
   "module": "dist/duck-api.mjs",
   "license": "MIT",
@@ -36,7 +36,7 @@
     "rollup": "^2.33.2",
     "rollup-plugin-babel-minify": "^10.0.0",
     "sinon": "^9.2.1",
-    "socket.io-client": "^3.0.1",
+    "socket.io-client": "^2.3.1",
     "standard-version": "^9.0.0"
   },
   "ava": {
@@ -87,7 +87,7 @@
     "koa-router": "^10.0.0",
     "lodash": "^4.17.20",
     "query-string": "^6.13.7",
-    "socket.io": "^3.0.1"
+    "socket.io": "^2.3.0"
   },
   "config": {
     "readme": {
