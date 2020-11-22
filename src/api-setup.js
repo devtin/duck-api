@@ -5,6 +5,7 @@ import socketIo from 'socket.io'
 import flattenDeep from 'lodash/flattenDeep'
 import kebabCase from 'lodash/kebabCase'
 import startCase from 'lodash/startCase'
+import castArray from 'lodash/castArray'
 import cleanDeep from 'clean-deep'
 import { DuckStorage, registerDuckRacksFromDir, Duckfficer, Duck, DuckRack } from 'duck-storage'
 import Promise from 'bluebird'
@@ -151,7 +152,8 @@ export async function apiSetup ({
 
   let racks
   let racksMethodsAccess
-  let racksCRUDAccess
+  let racksCrudAccess
+  let racksCrudDelivery
 
   if (racksDir && typeof racksDir === 'string') {
     await registerDuckRacksFromDir(racksDir)
@@ -162,16 +164,21 @@ export async function apiSetup ({
         'methods/**/access.js'
       ]
     })
-    racksCRUDAccess = await jsDirIntoJson( racksDir, {
+    racksCrudAccess = await jsDirIntoJson( racksDir, {
       extensions: [
         'access.js'
+      ]
+    })
+    racksCrudDelivery = await jsDirIntoJson( racksDir, {
+      extensions: [
+        'delivery.js'
       ]
     })
     // todo: create a driver interface
     racks = DuckStorage.listRacks().map((name) => {
       const duckRack = DuckStorage.getRackByName(name)
       return Object.assign({
-        access: Utils.find(racksCRUDAccess, `${name}.access`),
+        access: Utils.find(racksCrudAccess, `${name}.access`),
         },
         duckRack)
     })
@@ -198,7 +205,7 @@ export async function apiSetup ({
   }
 
   racks = await Promise.map(racks, async rack => {
-    const tomerge = [
+    const toMerge = [
       {
         file: rack.name,
       },
@@ -207,7 +214,7 @@ export async function apiSetup ({
         methods: mapMethodAccess(Utils.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ]
-    const pl = merge.all(tomerge, {
+    const pl = merge.all(toMerge, {
       isMergeableObject: isPlainObject
     })
     return Entity.parse(pl)
@@ -251,10 +258,19 @@ export async function apiSetup ({
   // event wiring
   // todo: permissions
   // todo: move to a plugin
+  // returns array of rooms
   const getDeliveryDestination = (event, payload) => {
+    const delivery = Utils.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true
 
-    // todo: compute the socket.io groups
-    return io
+    const processOutput = (output) => {
+      return typeof output === 'boolean' ? output : castArray(delivery)
+    }
+
+    if (typeof delivery === 'function') {
+      return processOutput(delivery({ event, payload, io }))
+    }
+
+    return processOutput(delivery)
   }
 
   const wireIo = (ev) => {
@@ -263,9 +279,17 @@ export async function apiSetup ({
       if (!deliveryDestination) {
         return
       }
-      return deliveryDestination.emit(ev, payload)
+
+      if (deliveryDestination === true) {
+        return io.emit(ev, payload)
+      }
+
+      deliveryDestination.forEach(group => {
+        io.to(group).emit(ev, payload)
+      })
     }
   }
+
   DuckStorage.on('create', wireIo('create'))
   DuckStorage.on('read', wireIo('read'))
   DuckStorage.on('update', wireIo('update'))

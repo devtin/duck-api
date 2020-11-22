@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.10
+ * duck-api v0.0.12
  * (c) 2020-2020 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -20,6 +20,7 @@ var koaNTS = require('koa-no-trailing-slash');
 var socketIo = require('socket.io');
 var flattenDeep = require('lodash/flattenDeep');
 var startCase$1 = require('lodash/startCase');
+var castArray = require('lodash/castArray');
 var cleanDeep = require('clean-deep');
 var qs = require('query-string');
 var jsDirIntoJson = require('js-dir-into-json');
@@ -66,6 +67,7 @@ var koaNTS__default = /*#__PURE__*/_interopDefaultLegacy(koaNTS);
 var socketIo__default = /*#__PURE__*/_interopDefaultLegacy(socketIo);
 var flattenDeep__default = /*#__PURE__*/_interopDefaultLegacy(flattenDeep);
 var startCase__default$1 = /*#__PURE__*/_interopDefaultLegacy(startCase$1);
+var castArray__default = /*#__PURE__*/_interopDefaultLegacy(castArray);
 var cleanDeep__default = /*#__PURE__*/_interopDefaultLegacy(cleanDeep);
 var qs__default = /*#__PURE__*/_interopDefaultLegacy(qs);
 var fs__default = /*#__PURE__*/_interopDefaultLegacy(fs);
@@ -1326,7 +1328,8 @@ async function apiSetup ({
 
   let racks;
   let racksMethodsAccess;
-  let racksCRUDAccess;
+  let racksCrudAccess;
+  let racksCrudDelivery;
 
   if (racksDir && typeof racksDir === 'string') {
     await duckStorage.registerDuckRacksFromDir(racksDir);
@@ -1337,16 +1340,21 @@ async function apiSetup ({
         'methods/**/access.js'
       ]
     });
-    racksCRUDAccess = await jsDirIntoJson.jsDirIntoJson( racksDir, {
+    racksCrudAccess = await jsDirIntoJson.jsDirIntoJson( racksDir, {
       extensions: [
         'access.js'
+      ]
+    });
+    racksCrudDelivery = await jsDirIntoJson.jsDirIntoJson( racksDir, {
+      extensions: [
+        'delivery.js'
       ]
     });
     // todo: create a driver interface
     racks = duckStorage.DuckStorage.listRacks().map((name) => {
       const duckRack = duckStorage.DuckStorage.getRackByName(name);
       return Object.assign({
-        access: Utils$2.find(racksCRUDAccess, `${name}.access`),
+        access: Utils$2.find(racksCrudAccess, `${name}.access`),
         },
         duckRack)
     });
@@ -1373,7 +1381,7 @@ async function apiSetup ({
   };
 
   racks = await Promise__default['default'].map(racks, async rack => {
-    const tomerge = [
+    const toMerge = [
       {
         file: rack.name,
       },
@@ -1382,7 +1390,7 @@ async function apiSetup ({
         methods: mapMethodAccess(Utils$2.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ];
-    const pl = merge__default['default'].all(tomerge, {
+    const pl = merge__default['default'].all(toMerge, {
       isMergeableObject: isPlainObject.isPlainObject
     });
     return Entity.parse(pl)
@@ -1426,21 +1434,38 @@ async function apiSetup ({
   // event wiring
   // todo: permissions
   // todo: move to a plugin
+  // returns array of rooms
   const getDeliveryDestination = (event, payload) => {
+    const delivery = Utils$2.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true;
 
-    // todo: compute the socket.io groups
-    return io
+    const processOutput = (output) => {
+      return typeof output === 'boolean' ? output : castArray__default['default'](delivery)
+    };
+
+    if (typeof delivery === 'function') {
+      return processOutput(delivery({ event, payload, io }))
+    }
+
+    return processOutput(delivery)
   };
 
   const wireIo = (ev) => {
     return (payload) => {
-      const deliveryDestination = getDeliveryDestination();
+      const deliveryDestination = getDeliveryDestination(ev, payload);
       if (!deliveryDestination) {
         return
       }
-      return deliveryDestination.emit(ev, payload)
+
+      if (deliveryDestination === true) {
+        return io.emit(ev, payload)
+      }
+
+      deliveryDestination.forEach(group => {
+        io.to(group).emit(ev, payload);
+      });
     }
   };
+
   duckStorage.DuckStorage.on('create', wireIo('create'));
   duckStorage.DuckStorage.on('read', wireIo('read'));
   duckStorage.DuckStorage.on('update', wireIo('update'));
