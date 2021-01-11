@@ -1,6 +1,6 @@
 /*!
- * duck-api v0.0.12
- * (c) 2020-2020 Martin Rafael Gonzalez <tin@devtin.io>
+ * duck-api v0.0.13
+ * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
 import { Duckfficer, Duck, registerDuckRacksFromDir, DuckStorage, registerDuckRacksFromObj } from 'duck-storage';
@@ -1266,7 +1266,7 @@ async function apiSetup ({
 
   const grabGateways = async (gatewayDir) => {
     const gateways = await jsDirIntoJson(gatewayDir, {
-      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
     });
     return Object.keys(gateways).map(name => {
       return {
@@ -1278,7 +1278,7 @@ async function apiSetup ({
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
     path2dot: convertToDot,
-    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
   })) : [];
 
   let racks;
