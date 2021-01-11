@@ -135,7 +135,7 @@ export async function apiSetup ({
 
   const grabGateways = async (gatewayDir) => {
     const gateways = await jsDirIntoJson(gatewayDir, {
-      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
     })
     return Object.keys(gateways).map(name => {
       return {
@@ -147,7 +147,7 @@ export async function apiSetup ({
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
     path2dot: convertToDot,
-    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.test.js', '*.js', '*.mjs']
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
   })) : []
 
   let racks
