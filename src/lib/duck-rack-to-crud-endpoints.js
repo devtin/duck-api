@@ -68,7 +68,8 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
         },
       },
       async handler (ctx, next) {
-        const doc = await duckRack.list(ctx.$pleasure.get.query, ctx.$pleasure.get.sort, ctx.$pleasure.state)
+        const { state, get: { sort } } = ctx.$pleasure
+        const doc = await duckRack.list(ctx.$pleasure.get.query, {  state, sort })
         if (!doc) {
           return next()
         }
@@ -118,7 +119,6 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
           }
         }
       }))
-
     })
   }
 
