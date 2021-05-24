@@ -3,7 +3,7 @@
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
-import { Duckfficer, Duck, registerDuckRacksFromDir, DuckStorage, registerDuckRacksFromObj } from 'duck-storage';
+import { Duckfficer, Duck, DuckStorageClass, registerDuckRacksFromDir, registerDuckRacksFromObj } from 'duck-storage';
 import * as duckStorage from 'duck-storage';
 export { duckStorage as DuckStorage };
 import startCase from 'lodash/startCase.js';
@@ -640,7 +640,8 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
         },
       },
       async handler (ctx, next) {
-        const doc = await duckRack.list(ctx.$pleasure.get.query, ctx.$pleasure.get.sort, ctx.$pleasure.state);
+        const { state, get: { sort } } = ctx.$pleasure;
+        const doc = await duckRack.list(ctx.$pleasure.get.query, {  state, sort });
         if (!doc) {
           return next()
         }
@@ -690,7 +691,6 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
           }
         }
       }));
-
     });
   }
 
@@ -1207,9 +1207,13 @@ async function apiSetup ({
   servicesPrefix = '/services',
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
+  duckStorage,
+  duckStoragePlugins = [],
   pluginsDir,
 }, { plugins = [], socketIOSettings = {}, koaBodySettings = defaultKoaBodySettings, customErrorHandling = errorHandling } = {}) {
-
+  const DuckStorage = duckStorage || await new DuckStorageClass({
+    plugins: duckStoragePlugins
+  });
   const mainRouter = Router();
 
   const servicesRouter = Router({
@@ -1287,7 +1291,23 @@ async function apiSetup ({
   let racksCrudDelivery;
 
   if (racksDir && typeof racksDir === 'string') {
-    await registerDuckRacksFromDir(racksDir);
+    const remapKeys = (obj) => {
+      const mapKeys = (child) => {
+        return {
+          ...child,
+          duckModel: child.model
+        }
+      };
+      const dst = {};
+
+      Object.keys(obj).forEach(propName => {
+        dst[propName] = mapKeys(obj[propName]);
+      });
+
+      return dst
+    };
+
+    await registerDuckRacksFromDir(DuckStorage, racksDir, remapKeys);
     racksMethodsAccess = await jsDirIntoJson( racksDir, {
       extensions: [
         '!__tests__',
@@ -1563,7 +1583,7 @@ async function apiSetup ({
     throw new ApiError(404)
   });
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter }
+  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage }
 }
 
 /**

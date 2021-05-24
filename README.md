@@ -239,7 +239,7 @@ t.snapshot(swaggerEndpoint)
 const converted = await duckRackToCrudEndpoints(anEntity, entityDriver)
 t.true(Array.isArray(converted))
 
-t.is(converted.length, 5)
+t.is(converted.length, 3)
 
 converted.forEach(entity => {
   t.notThrows(() => CRUDEndpoint.parse(entity))
@@ -250,7 +250,6 @@ t.truthy(converted[0].create)
 t.truthy(converted[0].read)
 t.truthy(converted[0].update)
 t.truthy(converted[0].delete)
-t.truthy(converted[0].list)
 t.snapshot(converted)
 ```
 

@@ -1,14 +1,16 @@
 import test from 'ava'
 import { Entity, CRUDEndpoint } from './schema'
 import { duckRackToCrudEndpoints } from './duck-rack-to-crud-endpoints.js'
-import { DuckStorage, Duck, DuckRack } from 'duck-storage'
+import { DuckStorageClass, Duck, DuckRack } from 'duck-storage'
 
+let DuckStorage
 let anEntity
 let duckModel
 let duckRack
 let entityDriver
 
 test.before(async () => {
+  DuckStorage = await new DuckStorageClass()
   anEntity = await Entity.parse({
     file: '/papo.js',
     duckModel: {
@@ -45,7 +47,7 @@ test(`Converts an entity into an array of crud endpoints`, async t => {
   const converted = await duckRackToCrudEndpoints(anEntity, entityDriver)
   t.true(Array.isArray(converted))
 
-  t.is(converted.length, 5)
+  t.is(converted.length, 3)
 
   converted.forEach(entity => {
     t.notThrows(() => CRUDEndpoint.parse(entity))
@@ -56,6 +58,5 @@ test(`Converts an entity into an array of crud endpoints`, async t => {
   t.truthy(converted[0].read)
   t.truthy(converted[0].update)
   t.truthy(converted[0].delete)
-  t.truthy(converted[0].list)
   t.snapshot(converted)
 })

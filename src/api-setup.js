@@ -7,7 +7,7 @@ import kebabCase from 'lodash/kebabCase'
 import startCase from 'lodash/startCase'
 import castArray from 'lodash/castArray'
 import cleanDeep from 'clean-deep'
-import { DuckStorage, registerDuckRacksFromDir, Duckfficer, Duck, DuckRack } from 'duck-storage'
+import { DuckStorageClass, registerDuckRacksFromDir, Duckfficer } from 'duck-storage'
 import Promise from 'bluebird'
 import qs from 'query-string'
 import { jsDirIntoJson } from 'js-dir-into-json'
@@ -76,9 +76,13 @@ export async function apiSetup ({
   servicesPrefix = '/services',
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
+  duckStorage,
+  duckStoragePlugins = [],
   pluginsDir,
 }, { plugins = [], socketIOSettings = {}, koaBodySettings = defaultKoaBodySettings, customErrorHandling = errorHandling } = {}) {
-
+  const DuckStorage = duckStorage || await new DuckStorageClass({
+    plugins: duckStoragePlugins
+  })
   const mainRouter = Router()
 
   const servicesRouter = Router({
@@ -156,7 +160,23 @@ export async function apiSetup ({
   let racksCrudDelivery
 
   if (racksDir && typeof racksDir === 'string') {
-    await registerDuckRacksFromDir(racksDir)
+    const remapKeys = (obj) => {
+      const mapKeys = (child) => {
+        return {
+          ...child,
+          duckModel: child.model
+        }
+      }
+      const dst = {}
+
+      Object.keys(obj).forEach(propName => {
+        dst[propName] = mapKeys(obj[propName])
+      })
+
+      return dst
+    }
+
+    await registerDuckRacksFromDir(DuckStorage, racksDir, remapKeys)
     racksMethodsAccess = await jsDirIntoJson( racksDir, {
       extensions: [
         '!__tests__',
@@ -432,5 +452,5 @@ export async function apiSetup ({
     throw new ApiError(404)
   })
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter }
+  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage }
 }

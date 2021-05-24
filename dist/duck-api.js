@@ -685,7 +685,8 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
         },
       },
       async handler (ctx, next) {
-        const doc = await duckRack.list(ctx.$pleasure.get.query, ctx.$pleasure.get.sort, ctx.$pleasure.state);
+        const { state, get: { sort } } = ctx.$pleasure;
+        const doc = await duckRack.list(ctx.$pleasure.get.query, {  state, sort });
         if (!doc) {
           return next()
         }
@@ -735,7 +736,6 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
           }
         }
       }));
-
     });
   }
 
@@ -1252,9 +1252,13 @@ async function apiSetup ({
   servicesPrefix = '/services',
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
+  duckStorage: duckStorage$1,
+  duckStoragePlugins = [],
   pluginsDir,
 }, { plugins = [], socketIOSettings = {}, koaBodySettings = defaultKoaBodySettings, customErrorHandling = errorHandling } = {}) {
-
+  const DuckStorage = duckStorage$1 || await new duckStorage.DuckStorageClass({
+    plugins: duckStoragePlugins
+  });
   const mainRouter = Router__default['default']();
 
   const servicesRouter = Router__default['default']({
@@ -1332,7 +1336,23 @@ async function apiSetup ({
   let racksCrudDelivery;
 
   if (racksDir && typeof racksDir === 'string') {
-    await duckStorage.registerDuckRacksFromDir(racksDir);
+    const remapKeys = (obj) => {
+      const mapKeys = (child) => {
+        return {
+          ...child,
+          duckModel: child.model
+        }
+      };
+      const dst = {};
+
+      Object.keys(obj).forEach(propName => {
+        dst[propName] = mapKeys(obj[propName]);
+      });
+
+      return dst
+    };
+
+    await duckStorage.registerDuckRacksFromDir(DuckStorage, racksDir, remapKeys);
     racksMethodsAccess = await jsDirIntoJson.jsDirIntoJson( racksDir, {
       extensions: [
         '!__tests__',
@@ -1351,8 +1371,8 @@ async function apiSetup ({
       ]
     });
     // todo: create a driver interface
-    racks = duckStorage.DuckStorage.listRacks().map((name) => {
-      const duckRack = duckStorage.DuckStorage.getRackByName(name);
+    racks = DuckStorage.listRacks().map((name) => {
+      const duckRack = DuckStorage.getRackByName(name);
       return Object.assign({
         access: Utils$2.find(racksCrudAccess, `${name}.access`),
         },
@@ -1397,7 +1417,7 @@ async function apiSetup ({
   });
 
   const racksEndpoints = flattenDeep__default['default'](await Promise__default['default'].map(racks, entity => {
-    return duckRackToCrudEndpoints(entity, duckStorage.DuckStorage.getRackByName(entity.name))
+    return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }));
 
   const gateways = gatewaysDir ? await grabGateways(gatewaysDir) : [];
@@ -1466,12 +1486,12 @@ async function apiSetup ({
     }
   };
 
-  duckStorage.DuckStorage.on('create', wireIo('create'));
-  duckStorage.DuckStorage.on('read', wireIo('read'));
-  duckStorage.DuckStorage.on('update', wireIo('update'));
-  duckStorage.DuckStorage.on('delete', wireIo('delete'));
-  duckStorage.DuckStorage.on('list', wireIo('list'));
-  duckStorage.DuckStorage.on('method', wireIo('method'));
+  DuckStorage.on('create', wireIo('create'));
+  DuckStorage.on('read', wireIo('read'));
+  DuckStorage.on('update', wireIo('update'));
+  DuckStorage.on('delete', wireIo('delete'));
+  DuckStorage.on('list', wireIo('list'));
+  DuckStorage.on('method', wireIo('method'));
 
   app.use(async (ctx, next) => {
     await next();
@@ -1608,7 +1628,7 @@ async function apiSetup ({
     throw new ApiError(404)
   });
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter }
+  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage }
 }
 
 /**
