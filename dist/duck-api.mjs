@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.13
+ * duck-api v0.0.15
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -10,7 +10,7 @@ import startCase from 'lodash/startCase.js';
 import pick from 'lodash/pick';
 import path from 'path';
 import { deepScanDir, findPackageJson, packageJson } from '@pleasure-js/utils';
-import Promise from 'bluebird';
+import Promise$1 from 'bluebird';
 import kebabCase from 'lodash/kebabCase';
 import Router from 'koa-router';
 import koaBody from 'koa-body';
@@ -53,9 +53,9 @@ class ApiError extends Error {
   }
 }
 
-const { Schema } = Duckfficer;
+const { Schema: Schema$8 } = Duckfficer;
 
-const Access = new Schema({
+const Access = new Schema$8({
   type: Function,
   required: false
 });
@@ -64,7 +64,7 @@ function isNotNullObj (obj) {
   return typeof obj === 'object' && obj !== null && !Array.isArray(obj)
 }
 
-const { Schema: Schema$1, Transformers } = Duckfficer;
+const { Schema: Schema$7, Transformers } = Duckfficer;
 
 
 Transformers.Input = {
@@ -73,12 +73,12 @@ Transformers.Input = {
   },
   cast (v) {
     if (isNotNullObj(v) || (typeof v === 'function' &&  Transformers[v.name])) {
-      return Schema$1.ensureSchema(typeof v === 'function' ? { type: v } : v)
+      return Schema$7.ensureSchema(typeof v === 'function' ? { type: v } : v)
     }
     return v
   },
   validate (v) {
-    if (typeof v !== 'boolean' && !(v instanceof Schema$1)) {
+    if (typeof v !== 'boolean' && !(v instanceof Schema$7)) {
       this.throwError(`Invalid schema or boolean at path ${this.fullPath}`, { value:v, field: this });
     }
   }
@@ -98,18 +98,18 @@ Transformers.Output = (() => {
       autoCast: true
     },
     cast (v) {
-      if (!(v instanceof Schema$1) && allKeysAreNumbers(v)) {
+      if (!(v instanceof Schema$7) && allKeysAreNumbers(v)) {
         return v
       }
 
-      if (isNotNullObj(v) && !(v instanceof Schema$1) && v.schema) {
+      if (isNotNullObj(v) && !(v instanceof Schema$7) && v.schema) {
         return {
           200: v
         }
       }
 
       return isNotNullObj(v) ? {
-        200: Schema$1.ensureSchema(v)
+        200: Schema$7.ensureSchema(v)
       } : false
     },
     validate (v) {
@@ -128,7 +128,7 @@ Transformers.Output = (() => {
  * @property {Schema} [body] - Schema for the post body object (not available for get endpoints)
  */
 
-const EndpointHandler = new Schema$1({
+const EndpointHandler = new Schema$7({
   access: Access,
   handler: Function,
   example: {
@@ -143,12 +143,12 @@ const EndpointHandler = new Schema$1({
   errors: {
     type: Object,
     required: false,
-    mapSchema: [Schema$1, Object],
+    mapSchema: [Schema$7, Object],
   },
   events: {
     type: Object,
     required: false,
-    mapSchema: [Schema$1, Object],
+    mapSchema: [Schema$7, Object],
   },
   // schemas will be parse with ({ state: { ctx, level } })
   get: {
@@ -183,7 +183,7 @@ const EndpointHandler = new Schema$1({
   }
 });
 
-const { Schema: Schema$2 } = Duckfficer;
+const { Schema: Schema$6 } = Duckfficer;
 
 const OptionalEndpoint = {
   type: EndpointHandler,
@@ -201,7 +201,7 @@ const OptionalEndpoint = {
  * @property {EndpointHandler} [list] - Traps get requests to an entity with optional filters
  */
 
-const CRUD = new Schema$2({
+const CRUD = new Schema$6({
   '*': OptionalEndpoint,
   all: OptionalEndpoint,
   create: OptionalEndpoint,
@@ -221,7 +221,7 @@ const CRUD = new Schema$2({
   }
 });
 
-const { Schema: Schema$3 } = Duckfficer;
+const { Schema: Schema$5 } = Duckfficer;
 
 /**
  * A CRUD representation of an endpoint
@@ -230,7 +230,7 @@ const { Schema: Schema$3 } = Duckfficer;
  * @property {String} path
  */
 
-const CRUDEndpoint = new Schema$3(Object.assign({
+const CRUDEndpoint = new Schema$5(Object.assign({
   path: String
 }, CRUD.schema));
 
@@ -277,9 +277,9 @@ const Method = new Schema$4({
   }
 });
 
-const { Schema: Schema$5 } = Duckfficer;
+const { Schema: Schema$3 } = Duckfficer;
 
-const CRUDAccess = new Schema$5({
+const CRUDAccess = new Schema$3({
   create: Access,
   read: Access,
   update: Access,
@@ -309,7 +309,7 @@ const CRUDAccess = new Schema$5({
   }
 });
 
-const Model = new Schema$5({
+const Model = new Schema$3({
     type: Object
 }, {
   validate (v) {
@@ -319,7 +319,7 @@ const Model = new Schema$5({
   },
   cast (v) {
     if (isNotNullObj(v) && !(v instanceof Duck) && Object.keys(v).length > 0 && v.schema) {
-      const schema = Schema$5.ensureSchema(v.schema);
+      const schema = Schema$3.ensureSchema(v.schema);
       return new Duck({ schema })
     }
     return v
@@ -333,7 +333,7 @@ const Model = new Schema$5({
  * @property {Schema|Object} schema
  * @property {Object} methods
  */
-const Entity = new Schema$5({
+const Entity = new Schema$3({
   file: String,
   path: String,
   name: String,
@@ -356,7 +356,7 @@ const Entity = new Schema$5({
   }
 });
 
-var index = /*#__PURE__*/Object.freeze({
+var index$1 = /*#__PURE__*/Object.freeze({
   __proto__: null,
   CRUD: CRUD,
   CRUDEndpoint: CRUDEndpoint,
@@ -364,7 +364,7 @@ var index = /*#__PURE__*/Object.freeze({
   Entity: Entity
 });
 
-const { Schema: Schema$6 } = Duckfficer;
+const { Schema: Schema$2 } = Duckfficer;
 
 const changeSchemaDefaultSettings = (newSettings, schema) => {
   Object.assign(schema._settings, newSettings);
@@ -385,13 +385,13 @@ const changeSchemaDefaultSettings = (newSettings, schema) => {
 
 function apiSchemaValidationMiddleware ({ get = true, body = true }) {
   if (get && typeof get === 'object') {
-    if (get instanceof Schema$6) {
-      get = Schema$6.cloneSchema({ schema: get, settings: {
+    if (get instanceof Schema$2) {
+      get = Schema$2.cloneSchema({ schema: get, settings: {
           autoCast: true
         }
       });
     } else {
-      get = new Schema$6(get, {
+      get = new Schema$2(get, {
         settings: {
           autoCast: true
         }
@@ -402,16 +402,16 @@ function apiSchemaValidationMiddleware ({ get = true, body = true }) {
     }, get);
   }
 
-  if (body && !(body instanceof Schema$6) && typeof body === 'object') {
-    if (body instanceof Schema$6) {
-      body = Schema$6.cloneSchema({
+  if (body && !(body instanceof Schema$2) && typeof body === 'object') {
+    if (body instanceof Schema$2) {
+      body = Schema$2.cloneSchema({
         schema: body,
         settings: {
           autoCast: true
         }
       });
     } else {
-      body = new Schema$6(body, {
+      body = new Schema$2(body, {
         settings: {
           autoCast: true
         }
@@ -443,8 +443,8 @@ function apiSchemaValidationMiddleware ({ get = true, body = true }) {
     try {
       // todo: document that ctx is passed as part of the state
       const parsingOptions = { state: Object.assign({ ctx }, state), virtualsEnumerable: false };
-      ctx.$pleasure.get = get && get instanceof Schema$6 ? await get.parse(getVars, parsingOptions) : getVars;
-      ctx.$pleasure.body = body && body instanceof Schema$6 ? await body.parse(postVars, parsingOptions) : postVars;
+      ctx.$pleasure.get = get && get instanceof Schema$2 ? await get.parse(getVars, parsingOptions) : getVars;
+      ctx.$pleasure.body = body && body instanceof Schema$2 ? await body.parse(postVars, parsingOptions) : postVars;
     } catch (err) {
       err.code = err.code || 400;
       throw err
@@ -562,7 +562,7 @@ async function loadEntitiesFromDir (dir) {
   require = require('esm')(module);  // eslint-disable-line
 
   const files = await deepScanDir(dir, { only: [/\.js$/] });
-  return Promise.map(files, async file => {
+  return Promise$1.map(files, async file => {
     const entity = require(file).default || require(file);
     entity.file = path.relative(dir, file);
 
@@ -576,7 +576,7 @@ async function loadEntitiesFromDir (dir) {
   })
 }
 
-const { Schema: Schema$7, Utils } = Duckfficer;
+const { Schema: Schema$1, Utils: Utils$2 } = Duckfficer;
 
 const deeplyChangeSetting = (schema, settings) => {
   Object.assign(schema._settings, settings);
@@ -593,7 +593,7 @@ const deeplyChangeSetting = (schema, settings) => {
 async function duckRackToCrudEndpoints (entity, duckRack) {
   const crudEndpoints = [];
 
-  const updateSchema = Schema$7.cloneSchema({
+  const updateSchema = Schema$1.cloneSchema({
     schema: entity.duckModel.originalSchema
   });
 
@@ -673,10 +673,10 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
   }));
 
   if (duckRack.methods) {
-    await Promise.each(Object.keys(duckRack.methods), async methodName => {
+    await Promise$1.each(Object.keys(duckRack.methods), async methodName => {
       const thePath = `${ entity.path }/${ kebabCase(methodName) }`;
       const { input, output, handler, description = `method ${methodName}` } = duckRack.methods[methodName];
-      const { access, verb = 'post' } = Utils.find(duckRack, `_methods.${methodName}`) || {};
+      const { access, verb = 'post' } = Utils$2.find(duckRack, `_methods.${methodName}`) || {};
 
       crudEndpoints.push(await CRUDEndpoint.parse({
         path: thePath,
@@ -759,7 +759,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
 */
 
   const registerMethods = async (methods = {}, parentPath = '') => {
-    return Promise.each(Object.keys(methods), async methodName => {
+    return Promise$1.each(Object.keys(methods), async methodName => {
       const method = methods[methodName];
       const dotPath2Path = (dotPath = '') => {
         return dotPath.split(/\./g).map(kebabCase).join('/')
@@ -776,19 +776,19 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
               required: false
             }
           },
-          body: Utils.find(method, 'data.router.input') || method.input,
-          output: Utils.find(method, 'data.router.output') || method.output,
+          body: Utils$2.find(method, 'data.router.input') || method.input,
+          output: Utils$2.find(method, 'data.router.output') || method.output,
           async handler (ctx) {
             const { id } = ctx.params;
             const { _v } = ctx.$pleasure.get;
             const getPayload = async () => {
-              if (Utils.find(method, 'data.router.handler')) {
+              if (Utils$2.find(method, 'data.router.handler')) {
                 return method.data.router.handler(ctx.$pleasure.body, ctx)
               }
               return ctx.$pleasure.body
             };
             const getValidate = () => {
-              const validator = Utils.find(method, 'data.router.validate');
+              const validator = Utils$2.find(method, 'data.router.validate');
               if (validator) {
                 return (doc) => {
                   return validator(doc, ctx)
@@ -811,7 +811,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
   }
 
   const registerChildrenMethods = (model) => {
-    return Promise.each(model.ownPaths, async ownPath => {
+    return Promise$1.each(model.ownPaths, async ownPath => {
       const children = model.schemaAtPath(ownPath);
       await registerMethods(children._methods, children.fullPath);
       return registerChildrenMethods(children)
@@ -836,7 +836,7 @@ function convertToPath (dirPath) {
 async function routeToCrudEndpoints (routeTree = {}, parentPath = []) {
   const endpoints = [];
   if (isNotNullObj(routeTree)) {
-    await Promise.each(Object.keys(routeTree), async propName => {
+    await Promise$1.each(Object.keys(routeTree), async propName => {
       if (propName === '0') {
         throw new Error('reached')
       }
@@ -860,7 +860,7 @@ async function routeToCrudEndpoints (routeTree = {}, parentPath = []) {
 }
 
 function gatewayToCrudEndpoints(client) {
-  return Promise.map(Object.keys(client.methods), async methodName => {
+  return Promise$1.map(Object.keys(client.methods), async methodName => {
     const method = client.methods[methodName];
     methodName = kebabCase(methodName);
 
@@ -956,10 +956,10 @@ function loadPlugin (baseDir = process.cwd(), pluginName) {
   return plugin.bind(pluginState)
 }
 
-const { Schema: Schema$8, Utils: Utils$1 } = Duckfficer;
+const { Schema, Utils: Utils$1 } = Duckfficer;
 
 const schemaValidatorToSwagger = (schema) => {
-  schema = Schema$8.ensureSchema(schema);
+  schema = Schema.ensureSchema(schema);
 
   const getType = type => {
     if (typeof type === 'object') {
@@ -1066,7 +1066,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
     if (typeof schema === 'boolean' || !schema) {
       return
     }
-    schema = Schema$8.ensureSchema(schema);
+    schema = Schema.ensureSchema(schema);
     return {
       description: schema.settings.description,
       content: {
@@ -1084,14 +1084,14 @@ function crudEndpointToOpenApi (crudEndpoint) {
     }
 
     const { summary, description } = endpoint;
-    const getSchema = Schema$8.ensureSchema(endpoint.get);
+    const getSchema = Schema.ensureSchema(endpoint.get);
     const getSchemaJson = schemaValidatorToSwagger(getSchema);
 
     const requestBody = getRequestBody(endpoint.body);
 
     const responses = mapValues(endpoint.output, (response, code) => {
       // const { description, summary, example } = response
-      const outputSchema = new Schema$8({
+      const outputSchema = new Schema({
         code: {
           type: Number,
           example: code
@@ -1162,7 +1162,7 @@ function convertToDot (dirPath) {
   }).join('.')
 }
 
-const { Utils: Utils$2 } = Duckfficer;
+const { Utils } = Duckfficer;
 const defaultKoaBodySettings = {
   multipart: true,
   jsonStrict: false,
@@ -1329,7 +1329,7 @@ async function apiSetup ({
     racks = DuckStorage.listRacks().map((name) => {
       const duckRack = DuckStorage.getRackByName(name);
       return Object.assign({
-        access: Utils$2.find(racksCrudAccess, `${name}.access`),
+        access: Utils.find(racksCrudAccess, `${name}.access`),
         },
         duckRack)
     });
@@ -1355,14 +1355,14 @@ async function apiSetup ({
     return mappedMethods
   };
 
-  racks = await Promise.map(racks, async rack => {
+  racks = await Promise$1.map(racks, async rack => {
     const toMerge = [
       {
         file: rack.name,
       },
       pick(rack, Entity.ownPaths),
       {
-        methods: mapMethodAccess(Utils$2.find(racksMethodsAccess, `${rack.name}.methods`))
+        methods: mapMethodAccess(Utils.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ];
     const pl = merge.all(toMerge, {
@@ -1371,15 +1371,15 @@ async function apiSetup ({
     return Entity.parse(pl)
   });
 
-  const racksEndpoints = flattenDeep(await Promise.map(racks, entity => {
+  const racksEndpoints = flattenDeep(await Promise$1.map(racks, entity => {
     return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }));
 
   const gateways = gatewaysDir ? await grabGateways(gatewaysDir) : [];
-  const gatewaysEndpoints = flattenDeep(await Promise.map(gateways, gatewayToCrudEndpoints));
+  const gatewaysEndpoints = flattenDeep(await Promise$1.map(gateways, gatewayToCrudEndpoints));
 
   const services = gatewaysDir ? await grabGateways(servicesDir) : [];
-  const servicesEndpoints = flattenDeep(await Promise.map(services, gatewayToCrudEndpoints));
+  const servicesEndpoints = flattenDeep(await Promise$1.map(services, gatewayToCrudEndpoints));
 
   const io = socketIo(server, socketIOSettings);
 
@@ -1397,10 +1397,10 @@ async function apiSetup ({
 
   const pluginsEndpoints = [];
 
-  await Promise.each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
+  await Promise$1.each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
     const endpoints = plugin({ router: mainRouter, app, server, io });
     if (endpoints) {
-      pluginsEndpoints.push(...await Promise.map(endpoints, schema => {
+      pluginsEndpoints.push(...await Promise$1.map(endpoints, schema => {
         return CRUDEndpoint.parse(schema)
       }));
     }
@@ -1411,7 +1411,7 @@ async function apiSetup ({
   // todo: move to a plugin
   // returns array of rooms
   const getDeliveryDestination = (event, payload) => {
-    const delivery = Utils$2.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true;
+    const delivery = Utils.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true;
 
     const processOutput = (output) => {
       return typeof output === 'boolean' ? output : castArray(delivery)
@@ -1478,7 +1478,7 @@ async function apiSetup ({
         description,
         version
       },
-      paths: (await Promise.map(endpoints, crudEndpointToOpenApi)).reduce((output, newRoute) => {
+      paths: (await Promise$1.map(endpoints, crudEndpointToOpenApi)).reduce((output, newRoute) => {
         return Object.assign({}, output, newRoute)
       }, {}),
       servers: [
@@ -1673,9 +1673,9 @@ function jwtAccess ({
   }
 }
 
-var index$1 = /*#__PURE__*/Object.freeze({
+var index = /*#__PURE__*/Object.freeze({
   __proto__: null,
   jwtAccess: jwtAccess
 });
 
-export { ApiError, index as Schemas, apiSchemaValidationMiddleware, apiSetup, crudEndpointIntoRouter, duckRackToCrudEndpoints, loadApiCrudDir, loadEntitiesFromDir, index$1 as plugins };
+export { ApiError, index$1 as Schemas, apiSchemaValidationMiddleware, apiSetup, crudEndpointIntoRouter, duckRackToCrudEndpoints, loadApiCrudDir, loadEntitiesFromDir, index as plugins };

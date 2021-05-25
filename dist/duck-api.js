@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.13
+ * duck-api v0.0.15
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -12,7 +12,7 @@ var startCase = require('lodash/startCase.js');
 var pick = require('lodash/pick');
 var path = require('path');
 var utils = require('@pleasure-js/utils');
-var Promise = require('bluebird');
+var Promise$1 = require('bluebird');
 var kebabCase = require('lodash/kebabCase');
 var Router = require('koa-router');
 var koaBody = require('koa-body');
@@ -59,7 +59,7 @@ var duckStorage__namespace = /*#__PURE__*/_interopNamespace(duckStorage);
 var startCase__default = /*#__PURE__*/_interopDefaultLegacy(startCase);
 var pick__default = /*#__PURE__*/_interopDefaultLegacy(pick);
 var path__default = /*#__PURE__*/_interopDefaultLegacy(path);
-var Promise__default = /*#__PURE__*/_interopDefaultLegacy(Promise);
+var Promise__default = /*#__PURE__*/_interopDefaultLegacy(Promise$1);
 var kebabCase__default = /*#__PURE__*/_interopDefaultLegacy(kebabCase);
 var Router__default = /*#__PURE__*/_interopDefaultLegacy(Router);
 var koaBody__default = /*#__PURE__*/_interopDefaultLegacy(koaBody);
@@ -98,9 +98,9 @@ class ApiError extends Error {
   }
 }
 
-const { Schema } = duckStorage.Duckfficer;
+const { Schema: Schema$8 } = duckStorage.Duckfficer;
 
-const Access = new Schema({
+const Access = new Schema$8({
   type: Function,
   required: false
 });
@@ -109,7 +109,7 @@ function isNotNullObj (obj) {
   return typeof obj === 'object' && obj !== null && !Array.isArray(obj)
 }
 
-const { Schema: Schema$1, Transformers } = duckStorage.Duckfficer;
+const { Schema: Schema$7, Transformers } = duckStorage.Duckfficer;
 
 
 Transformers.Input = {
@@ -118,12 +118,12 @@ Transformers.Input = {
   },
   cast (v) {
     if (isNotNullObj(v) || (typeof v === 'function' &&  Transformers[v.name])) {
-      return Schema$1.ensureSchema(typeof v === 'function' ? { type: v } : v)
+      return Schema$7.ensureSchema(typeof v === 'function' ? { type: v } : v)
     }
     return v
   },
   validate (v) {
-    if (typeof v !== 'boolean' && !(v instanceof Schema$1)) {
+    if (typeof v !== 'boolean' && !(v instanceof Schema$7)) {
       this.throwError(`Invalid schema or boolean at path ${this.fullPath}`, { value:v, field: this });
     }
   }
@@ -143,18 +143,18 @@ Transformers.Output = (() => {
       autoCast: true
     },
     cast (v) {
-      if (!(v instanceof Schema$1) && allKeysAreNumbers(v)) {
+      if (!(v instanceof Schema$7) && allKeysAreNumbers(v)) {
         return v
       }
 
-      if (isNotNullObj(v) && !(v instanceof Schema$1) && v.schema) {
+      if (isNotNullObj(v) && !(v instanceof Schema$7) && v.schema) {
         return {
           200: v
         }
       }
 
       return isNotNullObj(v) ? {
-        200: Schema$1.ensureSchema(v)
+        200: Schema$7.ensureSchema(v)
       } : false
     },
     validate (v) {
@@ -173,7 +173,7 @@ Transformers.Output = (() => {
  * @property {Schema} [body] - Schema for the post body object (not available for get endpoints)
  */
 
-const EndpointHandler = new Schema$1({
+const EndpointHandler = new Schema$7({
   access: Access,
   handler: Function,
   example: {
@@ -188,12 +188,12 @@ const EndpointHandler = new Schema$1({
   errors: {
     type: Object,
     required: false,
-    mapSchema: [Schema$1, Object],
+    mapSchema: [Schema$7, Object],
   },
   events: {
     type: Object,
     required: false,
-    mapSchema: [Schema$1, Object],
+    mapSchema: [Schema$7, Object],
   },
   // schemas will be parse with ({ state: { ctx, level } })
   get: {
@@ -228,7 +228,7 @@ const EndpointHandler = new Schema$1({
   }
 });
 
-const { Schema: Schema$2 } = duckStorage.Duckfficer;
+const { Schema: Schema$6 } = duckStorage.Duckfficer;
 
 const OptionalEndpoint = {
   type: EndpointHandler,
@@ -246,7 +246,7 @@ const OptionalEndpoint = {
  * @property {EndpointHandler} [list] - Traps get requests to an entity with optional filters
  */
 
-const CRUD = new Schema$2({
+const CRUD = new Schema$6({
   '*': OptionalEndpoint,
   all: OptionalEndpoint,
   create: OptionalEndpoint,
@@ -266,7 +266,7 @@ const CRUD = new Schema$2({
   }
 });
 
-const { Schema: Schema$3 } = duckStorage.Duckfficer;
+const { Schema: Schema$5 } = duckStorage.Duckfficer;
 
 /**
  * A CRUD representation of an endpoint
@@ -275,7 +275,7 @@ const { Schema: Schema$3 } = duckStorage.Duckfficer;
  * @property {String} path
  */
 
-const CRUDEndpoint = new Schema$3(Object.assign({
+const CRUDEndpoint = new Schema$5(Object.assign({
   path: String
 }, CRUD.schema));
 
@@ -322,9 +322,9 @@ const Method = new Schema$4({
   }
 });
 
-const { Schema: Schema$5 } = duckStorage.Duckfficer;
+const { Schema: Schema$3 } = duckStorage.Duckfficer;
 
-const CRUDAccess = new Schema$5({
+const CRUDAccess = new Schema$3({
   create: Access,
   read: Access,
   update: Access,
@@ -354,7 +354,7 @@ const CRUDAccess = new Schema$5({
   }
 });
 
-const Model = new Schema$5({
+const Model = new Schema$3({
     type: Object
 }, {
   validate (v) {
@@ -364,7 +364,7 @@ const Model = new Schema$5({
   },
   cast (v) {
     if (isNotNullObj(v) && !(v instanceof duckStorage.Duck) && Object.keys(v).length > 0 && v.schema) {
-      const schema = Schema$5.ensureSchema(v.schema);
+      const schema = Schema$3.ensureSchema(v.schema);
       return new duckStorage.Duck({ schema })
     }
     return v
@@ -378,7 +378,7 @@ const Model = new Schema$5({
  * @property {Schema|Object} schema
  * @property {Object} methods
  */
-const Entity = new Schema$5({
+const Entity = new Schema$3({
   file: String,
   path: String,
   name: String,
@@ -401,7 +401,7 @@ const Entity = new Schema$5({
   }
 });
 
-var index = /*#__PURE__*/Object.freeze({
+var index$1 = /*#__PURE__*/Object.freeze({
   __proto__: null,
   CRUD: CRUD,
   CRUDEndpoint: CRUDEndpoint,
@@ -409,7 +409,7 @@ var index = /*#__PURE__*/Object.freeze({
   Entity: Entity
 });
 
-const { Schema: Schema$6 } = duckStorage.Duckfficer;
+const { Schema: Schema$2 } = duckStorage.Duckfficer;
 
 const changeSchemaDefaultSettings = (newSettings, schema) => {
   Object.assign(schema._settings, newSettings);
@@ -430,13 +430,13 @@ const changeSchemaDefaultSettings = (newSettings, schema) => {
 
 function apiSchemaValidationMiddleware ({ get = true, body = true }) {
   if (get && typeof get === 'object') {
-    if (get instanceof Schema$6) {
-      get = Schema$6.cloneSchema({ schema: get, settings: {
+    if (get instanceof Schema$2) {
+      get = Schema$2.cloneSchema({ schema: get, settings: {
           autoCast: true
         }
       });
     } else {
-      get = new Schema$6(get, {
+      get = new Schema$2(get, {
         settings: {
           autoCast: true
         }
@@ -447,16 +447,16 @@ function apiSchemaValidationMiddleware ({ get = true, body = true }) {
     }, get);
   }
 
-  if (body && !(body instanceof Schema$6) && typeof body === 'object') {
-    if (body instanceof Schema$6) {
-      body = Schema$6.cloneSchema({
+  if (body && !(body instanceof Schema$2) && typeof body === 'object') {
+    if (body instanceof Schema$2) {
+      body = Schema$2.cloneSchema({
         schema: body,
         settings: {
           autoCast: true
         }
       });
     } else {
-      body = new Schema$6(body, {
+      body = new Schema$2(body, {
         settings: {
           autoCast: true
         }
@@ -488,8 +488,8 @@ function apiSchemaValidationMiddleware ({ get = true, body = true }) {
     try {
       // todo: document that ctx is passed as part of the state
       const parsingOptions = { state: Object.assign({ ctx }, state), virtualsEnumerable: false };
-      ctx.$pleasure.get = get && get instanceof Schema$6 ? await get.parse(getVars, parsingOptions) : getVars;
-      ctx.$pleasure.body = body && body instanceof Schema$6 ? await body.parse(postVars, parsingOptions) : postVars;
+      ctx.$pleasure.get = get && get instanceof Schema$2 ? await get.parse(getVars, parsingOptions) : getVars;
+      ctx.$pleasure.body = body && body instanceof Schema$2 ? await body.parse(postVars, parsingOptions) : postVars;
     } catch (err) {
       err.code = err.code || 400;
       throw err
@@ -621,7 +621,7 @@ async function loadEntitiesFromDir (dir) {
   })
 }
 
-const { Schema: Schema$7, Utils } = duckStorage.Duckfficer;
+const { Schema: Schema$1, Utils: Utils$2 } = duckStorage.Duckfficer;
 
 const deeplyChangeSetting = (schema, settings) => {
   Object.assign(schema._settings, settings);
@@ -638,7 +638,7 @@ const deeplyChangeSetting = (schema, settings) => {
 async function duckRackToCrudEndpoints (entity, duckRack) {
   const crudEndpoints = [];
 
-  const updateSchema = Schema$7.cloneSchema({
+  const updateSchema = Schema$1.cloneSchema({
     schema: entity.duckModel.originalSchema
   });
 
@@ -721,7 +721,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
     await Promise__default['default'].each(Object.keys(duckRack.methods), async methodName => {
       const thePath = `${ entity.path }/${ kebabCase__default['default'](methodName) }`;
       const { input, output, handler, description = `method ${methodName}` } = duckRack.methods[methodName];
-      const { access, verb = 'post' } = Utils.find(duckRack, `_methods.${methodName}`) || {};
+      const { access, verb = 'post' } = Utils$2.find(duckRack, `_methods.${methodName}`) || {};
 
       crudEndpoints.push(await CRUDEndpoint.parse({
         path: thePath,
@@ -821,19 +821,19 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
               required: false
             }
           },
-          body: Utils.find(method, 'data.router.input') || method.input,
-          output: Utils.find(method, 'data.router.output') || method.output,
+          body: Utils$2.find(method, 'data.router.input') || method.input,
+          output: Utils$2.find(method, 'data.router.output') || method.output,
           async handler (ctx) {
             const { id } = ctx.params;
             const { _v } = ctx.$pleasure.get;
             const getPayload = async () => {
-              if (Utils.find(method, 'data.router.handler')) {
+              if (Utils$2.find(method, 'data.router.handler')) {
                 return method.data.router.handler(ctx.$pleasure.body, ctx)
               }
               return ctx.$pleasure.body
             };
             const getValidate = () => {
-              const validator = Utils.find(method, 'data.router.validate');
+              const validator = Utils$2.find(method, 'data.router.validate');
               if (validator) {
                 return (doc) => {
                   return validator(doc, ctx)
@@ -1001,10 +1001,10 @@ function loadPlugin (baseDir = process.cwd(), pluginName) {
   return plugin.bind(pluginState)
 }
 
-const { Schema: Schema$8, Utils: Utils$1 } = duckStorage.Duckfficer;
+const { Schema, Utils: Utils$1 } = duckStorage.Duckfficer;
 
 const schemaValidatorToSwagger = (schema) => {
-  schema = Schema$8.ensureSchema(schema);
+  schema = Schema.ensureSchema(schema);
 
   const getType = type => {
     if (typeof type === 'object') {
@@ -1111,7 +1111,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
     if (typeof schema === 'boolean' || !schema) {
       return
     }
-    schema = Schema$8.ensureSchema(schema);
+    schema = Schema.ensureSchema(schema);
     return {
       description: schema.settings.description,
       content: {
@@ -1129,14 +1129,14 @@ function crudEndpointToOpenApi (crudEndpoint) {
     }
 
     const { summary, description } = endpoint;
-    const getSchema = Schema$8.ensureSchema(endpoint.get);
+    const getSchema = Schema.ensureSchema(endpoint.get);
     const getSchemaJson = schemaValidatorToSwagger(getSchema);
 
     const requestBody = getRequestBody(endpoint.body);
 
     const responses = mapValues__default['default'](endpoint.output, (response, code) => {
       // const { description, summary, example } = response
-      const outputSchema = new Schema$8({
+      const outputSchema = new Schema({
         code: {
           type: Number,
           example: code
@@ -1207,7 +1207,7 @@ function convertToDot (dirPath) {
   }).join('.')
 }
 
-const { Utils: Utils$2 } = duckStorage.Duckfficer;
+const { Utils } = duckStorage.Duckfficer;
 const defaultKoaBodySettings = {
   multipart: true,
   jsonStrict: false,
@@ -1374,7 +1374,7 @@ async function apiSetup ({
     racks = DuckStorage.listRacks().map((name) => {
       const duckRack = DuckStorage.getRackByName(name);
       return Object.assign({
-        access: Utils$2.find(racksCrudAccess, `${name}.access`),
+        access: Utils.find(racksCrudAccess, `${name}.access`),
         },
         duckRack)
     });
@@ -1407,7 +1407,7 @@ async function apiSetup ({
       },
       pick__default['default'](rack, Entity.ownPaths),
       {
-        methods: mapMethodAccess(Utils$2.find(racksMethodsAccess, `${rack.name}.methods`))
+        methods: mapMethodAccess(Utils.find(racksMethodsAccess, `${rack.name}.methods`))
       }
     ];
     const pl = merge__default['default'].all(toMerge, {
@@ -1456,7 +1456,7 @@ async function apiSetup ({
   // todo: move to a plugin
   // returns array of rooms
   const getDeliveryDestination = (event, payload) => {
-    const delivery = Utils$2.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true;
+    const delivery = Utils.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true;
 
     const processOutput = (output) => {
       return typeof output === 'boolean' ? output : castArray__default['default'](delivery)
@@ -1718,18 +1718,18 @@ function jwtAccess ({
   }
 }
 
-var index$1 = /*#__PURE__*/Object.freeze({
+var index = /*#__PURE__*/Object.freeze({
   __proto__: null,
   jwtAccess: jwtAccess
 });
 
 exports.DuckStorage = duckStorage__namespace;
 exports.ApiError = ApiError;
-exports.Schemas = index;
+exports.Schemas = index$1;
 exports.apiSchemaValidationMiddleware = apiSchemaValidationMiddleware;
 exports.apiSetup = apiSetup;
 exports.crudEndpointIntoRouter = crudEndpointIntoRouter;
 exports.duckRackToCrudEndpoints = duckRackToCrudEndpoints;
 exports.loadApiCrudDir = loadApiCrudDir;
 exports.loadEntitiesFromDir = loadEntitiesFromDir;
-exports.plugins = index$1;
+exports.plugins = index;
