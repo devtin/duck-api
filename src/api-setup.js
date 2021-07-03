@@ -72,7 +72,7 @@ export async function apiSetup ({
   servicesDir,
   racksDir,
   gatewaysDir,
-  racksPrefix,
+  racksPrefix = '/domain',
   servicesPrefix = '/services',
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
