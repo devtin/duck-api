@@ -1,14 +1,14 @@
 {
   "name": "duck-api",
   "author": "Martin Rafael Gonzalez <tin@devtin.io>",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "main": "dist/duck-api.js",
   "module": "dist/duck-api.mjs",
   "license": "MIT",
   "scripts": {
     "build": "npm run build:lib && npm run build:docs",
     "build:lib": "rollup -c",
-    "build:docs": "npx jsdoc2md --plugin dmd-readme -d 3 --template node_modules/dmd-readme/docs.hbs --files dist/duck-api.js > README.md",
+    "build:docs": "npx jsdoc2md -r esm --plugin dmd-readme -d 3 --template node_modules/dmd-readme/docs.hbs --files dist/duck-api.js > README.md",
     "build:live": "nodemon -w src --exec yarn build",
     "lint": "eslint --ext .js --ignore-path .gitignore src/",
     "test": "NODE_ENV=test ava --serial --verbose",

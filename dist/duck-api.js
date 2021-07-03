@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.15
+ * duck-api v0.0.16
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -1248,7 +1248,7 @@ async function apiSetup ({
   servicesDir,
   racksDir,
   gatewaysDir,
-  racksPrefix,
+  racksPrefix = '/domain',
   servicesPrefix = '/services',
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
