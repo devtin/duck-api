@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.18
+ * duck-api v0.0.19
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -14,20 +14,23 @@ var path = require('path');
 var utils = require('@pleasure-js/utils');
 var Promise$1 = require('bluebird');
 var kebabCase = require('lodash/kebabCase');
+var jsDirIntoJson = require('js-dir-into-json');
+var startCase$1 = require('lodash/startCase');
+var duckfficerMethod = require('duckfficer-method');
 var Router = require('koa-router');
-var koaBody = require('koa-body');
+var asyncBusboy = require('async-busboy');
 var koaNTS = require('koa-no-trailing-slash');
 var socketIo = require('socket.io');
 var flattenDeep = require('lodash/flattenDeep');
-var startCase$1 = require('lodash/startCase');
 var castArray = require('lodash/castArray');
 var cleanDeep = require('clean-deep');
 var qs = require('query-string');
-var jsDirIntoJson = require('js-dir-into-json');
 var schemaValidatorDoc = require('@devtin/schema-validator-doc');
 var fs = require('fs');
 var merge = require('deepmerge');
 var isPlainObject = require('is-plain-object');
+var set = require('lodash/set');
+var koaBody = require('koa-body');
 var omit = require('lodash/omit');
 var trim = require('lodash/trim');
 var mapValues = require('lodash/mapValues');
@@ -61,17 +64,19 @@ var pick__default = /*#__PURE__*/_interopDefaultLegacy(pick);
 var path__default = /*#__PURE__*/_interopDefaultLegacy(path);
 var Promise__default = /*#__PURE__*/_interopDefaultLegacy(Promise$1);
 var kebabCase__default = /*#__PURE__*/_interopDefaultLegacy(kebabCase);
+var startCase__default$1 = /*#__PURE__*/_interopDefaultLegacy(startCase$1);
 var Router__default = /*#__PURE__*/_interopDefaultLegacy(Router);
-var koaBody__default = /*#__PURE__*/_interopDefaultLegacy(koaBody);
+var asyncBusboy__default = /*#__PURE__*/_interopDefaultLegacy(asyncBusboy);
 var koaNTS__default = /*#__PURE__*/_interopDefaultLegacy(koaNTS);
 var socketIo__default = /*#__PURE__*/_interopDefaultLegacy(socketIo);
 var flattenDeep__default = /*#__PURE__*/_interopDefaultLegacy(flattenDeep);
-var startCase__default$1 = /*#__PURE__*/_interopDefaultLegacy(startCase$1);
 var castArray__default = /*#__PURE__*/_interopDefaultLegacy(castArray);
 var cleanDeep__default = /*#__PURE__*/_interopDefaultLegacy(cleanDeep);
 var qs__default = /*#__PURE__*/_interopDefaultLegacy(qs);
 var fs__default = /*#__PURE__*/_interopDefaultLegacy(fs);
 var merge__default = /*#__PURE__*/_interopDefaultLegacy(merge);
+var set__default = /*#__PURE__*/_interopDefaultLegacy(set);
+var koaBody__default = /*#__PURE__*/_interopDefaultLegacy(koaBody);
 var omit__default = /*#__PURE__*/_interopDefaultLegacy(omit);
 var trim__default = /*#__PURE__*/_interopDefaultLegacy(trim);
 var mapValues__default = /*#__PURE__*/_interopDefaultLegacy(mapValues);
@@ -662,7 +667,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
     read: {
       access: entity.access.list,
       description: `finds many ${entity.name} by complex query`,
-      output: entity.duckModel.schema,
+      output: new Schema$1({ type: Array, arraySchema: entity.duckModel.schema }),
       get: {
         query: {
           type: Object,
@@ -700,7 +705,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
         type: 'Query'
       },
       body: updateSchema,
-      output: entity.duckModel.schema,
+      output: new Schema$1({ type: Array, arraySchema: entity.duckModel.schema }),
       async handler (ctx) {
         ctx.body = await duckRack.update(ctx.$pleasure.get, ctx.$pleasure.body, ctx.$pleasure.state);
       }
@@ -871,6 +876,56 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
   return crudEndpoints
 }
 
+const methodsToDuckfficer = (methods) => {
+  const methodsObj = {};
+
+  Object.keys(methods).forEach((methodName) => {
+    const method = duckfficerMethod.duckfficerMethod(methods[methodName]);
+    methodsObj[methodName] = async (...payload) => {
+      try {
+        const { output } = await method(...payload);
+        return output
+      } catch (error) {
+        throw error.originalError
+      }
+    };
+  });
+
+  return methodsObj
+};
+
+const classesToObj = (classesArray) => {
+  return classesArray.reduce((objClass, currentClass) => {
+    return Object.assign(objClass, {
+      [currentClass.name]: methodsToDuckfficer(currentClass.methods)
+    })
+  }, {})
+};
+
+const grabClassesSync = (classesPath) => {
+  const gateways = jsDirIntoJson.jsDirIntoJsonSync(classesPath, {
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
+  });
+  return Object.keys(gateways).map(name => {
+    return {
+      name: startCase__default$1['default'](name).replace(/\s+/g, ''),
+      methods: gateways[name].methods
+    }
+  })
+};
+
+const grabClasses = async (classesPath) => {
+  const gateways = await jsDirIntoJson.jsDirIntoJson(classesPath, {
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
+  });
+  return Object.keys(gateways).map(name => {
+    return {
+      name: startCase__default$1['default'](name).replace(/\s+/g, ''),
+      methods: gateways[name].methods
+    }
+  })
+};
+
 function convertToPath (dirPath) {
   return trim__default['default'](dirPath, '/').replace(/((^|\/)index)?\.js(on)?$/i, '').split('/').map((name) => {
     const propPrefix = /^_/.test(name) ? ':' : '';
@@ -936,6 +991,7 @@ async function errorHandling (ctx, next) {
   try {
     await next();
   } catch (error) {
+    console.log(error);
     const { code = 500, message, errors } = error;
     const resultedError = {
       code,
@@ -1003,71 +1059,128 @@ function loadPlugin (baseDir = process.cwd(), pluginName) {
 
 const { Schema, Utils: Utils$1 } = duckStorage.Duckfficer;
 
-const schemaValidatorToSwagger = (schema) => {
+const getExample = (schema) => {
+  if (schema.settings.example) {
+    return schema.settings.example
+  }
+
+  if (getType(schema) === 'array' && schema.settings.arraySchema) {
+    return [getExample(Schema.ensureSchema(schema.settings.arraySchema))]
+  }
+
+  if (!schema.hasChildren) {
+    return ''
+  }
+
+  const example = {};
+
+  schema.children.forEach(child => {
+    if (!/^_/.test(child.name)) {
+      example[child.name] = getExample(child);
+    }
+  });
+
+  return example
+};
+
+const getType = (type) => {
+  if (typeof type === 'object' && !Array.isArray(type)) {
+    if (type.type) {
+      return getType(type.type)
+    }
+    return 'object'
+  }
+
+  const foundType = ((typeof type === 'function' ? type.name : type)||'string').toString().toLowerCase();
+
+  const allowed = ['string', 'object' , 'number', 'integer', 'array', 'file', 'date'];
+  return allowed.indexOf(foundType) >= 0 ? foundType : 'string'
+};
+
+const processObject = ({ schema, requestType }) => {
+  const properties = {};
+  schema.children.forEach((children) => {
+    // console.log(`children`, children)
+
+    Object.assign(properties, {
+      [children.name]: schemaValidatorToSwagger(children, requestType)
+    });
+  });
+  // console.log(JSON.stringify({ properties }, null,2))
+  return {
+    properties
+  }
+};
+
+const schemaTypeToSwagger = {
+  array({ requestType, schema }){
+    // console.log('array!', { requestType, schema })
+    return {
+      items: schemaValidatorToSwagger(schema.settings.arraySchema, requestType) || 'string',
+      example: [getExample(schema)]
+    }
+  },
+  date () {
+    return {
+      type: 'string',
+      format: 'date-time'
+    }
+  },
+  file({ requestType }) {
+    if (requestType === 'request') {
+      return {
+        type: 'string',
+        format: 'binary'
+      }
+    }
+
+    return {
+      type: 'string'
+    }
+  },
+  set () {
+    return {
+      type: 'array',
+      uniqueItems: true
+    }
+  },
+  string({ schema }) {
+    if (schema.settings.enum && schema.settings.enum.length > 0) {
+      return { enum: schema.settings.enum }
+    }
+  },
+  object: processObject
+};
+
+const schemaValidatorToSwagger = (schema, requestType) => {
   schema = Schema.ensureSchema(schema);
 
-  const getType = type => {
-    if (typeof type === 'object') {
-      if (type.type) {
-        return getType(type.type)
-      }
-      return 'object'
-    }
-    type = ((typeof type === 'function' ? type.name : type)||'string').toLowerCase();
-    const allowed = ['string', 'object' , 'number', 'integer', 'array', 'set'];
-    return allowed.indexOf(type) >= 0 ? type : 'string'
-  };
-
-  const getOpenApiSettingsFromType = (type, schemaSettings) => {
+  // todo: move this somewhere it can be override
+  const getOpenApiSettingsForSchema = (schema) => {
     const openApiSettings = {};
+    const type = getType(schema);
+    const typeFn = schemaTypeToSwagger[type];
 
-    if (getType(type) === 'string') {
-      if (schemaSettings.settings.enum) {
-        Object.assign(openApiSettings, { enum: schemaSettings.settings.enum });
-      }
-    }
-
-    if (getType(type) === 'array') {
-      Object.assign(openApiSettings, {
-        items: getType(schemaSettings.settings.arraySchema) || 'string'
-      });
-    }
-
-    if (getType(type) === 'set') {
-      Object.assign(openApiSettings, {
-        type: 'array',
-        uniqueItems: true
-      });
+    if (typeFn) {
+      Object.assign(openApiSettings, typeFn({ requestType, schema })||{});
     }
 
     return openApiSettings
   };
 
-  const remapContent = (obj) => {
-    const newObj = {};
+  const remapContent = (schema) => {
+    const obj = schemaValidatorDoc.schemaValidatorToJSON(schema);
     if (!isNotNullObj(obj)) {
       return obj
     }
 
-    if (typeof obj.type === 'string') {
-      return {
-        type: getType(obj.type),
-        ...getOpenApiSettingsFromType(getType(obj), obj)
-      }
+    return {
+      type: getType(schema),
+      ...getOpenApiSettingsForSchema(schema)
     }
-
-    Object.keys(obj).forEach(pathName => {
-      if (/^\$/.test(pathName)) {
-        return
-      }
-      newObj[pathName] = remapContent(obj[pathName]);
-    });
-
-    return newObj
   };
 
-  const output = remapContent(schemaValidatorDoc.schemaValidatorToJSON(schema));
-  return schema.hasChildren ? { type: 'object', properties: output } : output
+  return remapContent(schema)
 };
 
 function crudEndpointToOpenApi (crudEndpoint) {
@@ -1087,27 +1200,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
     })
   };
 
-  const getExample = (schema) => {
-    if (schema.settings.example) {
-      return schema.settings.example
-    }
-
-    if (!schema.hasChildren) {
-      return ''
-    }
-
-    const example = {};
-
-    schema.children.forEach(child => {
-      if (!/^_/.test(child.name)) {
-        example[child.name] = getExample(child);
-      }
-    });
-
-    return example
-  };
-
-  const getRequestBody = schema => {
+  const getRequestBody = (schema) => {
     if (typeof schema === 'boolean' || !schema) {
       return
     }
@@ -1115,22 +1208,22 @@ function crudEndpointToOpenApi (crudEndpoint) {
     return {
       description: schema.settings.description,
       content: {
-        "application/json": {
-          schema: schemaValidatorToSwagger(schema),
+        "multipart/form-data": {
+          schema: schemaValidatorToSwagger(schema, 'request'),
           example: getExample(schema)
         }
       }
     }
   };
 
-  const convert = endpoint => {
+  const convert = (endpoint) => {
     if (!endpoint) {
       return
     }
 
     const { summary, description } = endpoint;
     const getSchema = Schema.ensureSchema(endpoint.get);
-    const getSchemaJson = schemaValidatorToSwagger(getSchema);
+    const getSchemaJson = schemaValidatorToSwagger(getSchema, 'request');
 
     const requestBody = getRequestBody(endpoint.body);
 
@@ -1149,7 +1242,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
         // summary,
         content: {
           "application/json": {
-            schema: schemaValidatorToSwagger(outputSchema),
+            schema: schemaValidatorToSwagger(outputSchema, 'response'),
             example: getExample(outputSchema)
           }
         },
@@ -1208,11 +1301,19 @@ function convertToDot (dirPath) {
 }
 
 const { Utils } = duckStorage.Duckfficer;
-const defaultKoaBodySettings = {
-  multipart: true,
-  jsonStrict: false,
-  parsedMethods: ['GET', 'POST', 'PUT', 'PATCH']
+const defaultAsyncBusboySettings = {
 };
+
+const contains = (hash, needle) => {
+  return new RegExp(`^${needle}`).test(hash)
+};
+
+const requestCanBeHandledByBusboy = (ctx) => {
+  const ct = ctx.request.headers['content-type'];
+  console.log(ct);
+  return contains(ct, 'application/x-www-form-urlencoded') || contains(ct, 'multipart/form-data');
+};
+
 // todo: replace apiDir (and api concept in general) for gateway
 /**
  * Orchestrates all koa middleware's required for the api
@@ -1230,7 +1331,7 @@ const defaultKoaBodySettings = {
  * @param {Object} [options]
  * @param {String[]|Function[]} [options.plugins] - Koa plugins
  * @param {Object} [options.socketIOSettings] - Options for [socket.io]{@link https://socket.io/docs/server-api/}
- * @param {Object} [options.koaBodySettings] - Options for [koa-body]{@link https://github.com/dlau/koa-body}
+ * @param {Object} [options.asyncBusboySettings] - Options for [async-busboy]{@link https://github.com/m4nuC/async-busboy}
  * @param {Function} [options.customErrorHandling=errorHandling] - Koa middleware
  * @return {Promise.<{ io, mainRouter, apiRouter, entitiesRouter, apiEndpoints, entitiesEndpoints, pls }>} The koa `app`, the http `server` and the `socket.io` instance, `pls` the system pleasure instance
  * @see {@link https://github.com/koajs/koa} for documentation about the koa `app`
@@ -1255,7 +1356,7 @@ async function apiSetup ({
   duckStorage: duckStorage$1,
   duckStoragePlugins = [],
   pluginsDir,
-}, { plugins = [], socketIOSettings = {}, koaBodySettings = defaultKoaBodySettings, customErrorHandling = errorHandling } = {}) {
+}, { plugins = [], socketIOSettings = {}, asyncBusboySettings = defaultAsyncBusboySettings, customErrorHandling = errorHandling } = {}) {
   const DuckStorage = duckStorage$1 || await new duckStorage.DuckStorageClass({
     plugins: duckStoragePlugins
   });
@@ -1278,10 +1379,8 @@ async function apiSetup ({
   });
 
   app.use(koaNTS__default['default']());
+  app.use(koaBody__default['default']());
   app.use(customErrorHandling);
-
-  // required for the crud logic
-  app.use(koaBody__default['default'](koaBodySettings));
 
   // ctx setup
   app.use((ctx, next) => {
@@ -1298,32 +1397,45 @@ async function apiSetup ({
     return next()
   });
 
-  // todo: abstract in a plugin
-  app.use((ctx, next) => {
-    ctx.$pleasure.get = ctx.request.querystring ? qs__default['default'].parse(ctx.request.querystring, { parseNumbers: true }) : {};
-    if (ctx.request.body && ctx.request.body.$params) {
-      if (Object.keys(ctx.$pleasure.get).length > 0) {
-        console.log(`careful! using both params & body on a get request`);
-      }
-      ctx.$pleasure.get = ctx.request.body.$params;
-      delete ctx.request.body.$params;
+  const io = socketIo__default['default'](server, socketIOSettings);
+
+  const pluginsEndpoints = [];
+
+  // load plugins
+  await Promise__default['default'].each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
+    const endpoints = await plugin({ router: mainRouter, app, server, io });
+    if (endpoints) {
+      pluginsEndpoints.push(...await Promise__default['default'].map(endpoints, schema => {
+        return CRUDEndpoint.parse(schema)
+      }));
     }
-    ctx.$pleasure.body = ctx.request.body;
+  });
+
+  // todo: abstract in a plugin
+  app.use(async (ctx, next) => {
+    ctx.$pleasure.get = ctx.request.querystring ? qs__default['default'].parse(ctx.request.querystring, { parseNumbers: true }) : {};
+
+    const method = ctx.request.method.toLowerCase();
+    if (
+      method === 'post' ||
+      method === 'patch'
+    ) {
+      if (requestCanBeHandledByBusboy(ctx)) {
+        const { fields, files } = await asyncBusboy__default['default'](ctx.req);
+
+        files.forEach((file) => {
+          set__default['default'](fields, file.fieldname, file);
+        });
+
+        ctx.$pleasure.body = fields;
+        ctx.$pleasure.files = files;
+      } else {
+        ctx.$pleasure.body = ctx.request.body;
+      }
+    }
 
     return next()
   });
-
-  const grabGateways = async (gatewayDir) => {
-    const gateways = await jsDirIntoJson.jsDirIntoJson(gatewayDir, {
-      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
-    });
-    return Object.keys(gateways).map(name => {
-      return {
-        name: startCase__default$1['default'](name).replace(/\s+/g, ''),
-        methods: gateways[name].methods
-      }
-    })
-  };
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson.jsDirIntoJson(routesDir, {
     path2dot: convertToDot,
@@ -1420,13 +1532,11 @@ async function apiSetup ({
     return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }));
 
-  const gateways = gatewaysDir ? await grabGateways(gatewaysDir) : [];
+  const gateways = gatewaysDir ? await grabClasses(gatewaysDir) : [];
   const gatewaysEndpoints = flattenDeep__default['default'](await Promise__default['default'].map(gateways, gatewayToCrudEndpoints));
 
-  const services = gatewaysDir ? await grabGateways(servicesDir) : [];
+  const services = servicesDir ? await grabClasses(servicesDir) : [];
   const servicesEndpoints = flattenDeep__default['default'](await Promise__default['default'].map(services, gatewayToCrudEndpoints));
-
-  const io = socketIo__default['default'](server, socketIOSettings);
 
   const registeredEntities = {};
 
@@ -1438,17 +1548,6 @@ async function apiSetup ({
   racksRouter.get('/', ctx => {
     // todo: filter per user-permission
     ctx.body = registeredEntities;
-  });
-
-  const pluginsEndpoints = [];
-
-  await Promise__default['default'].each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
-    const endpoints = plugin({ router: mainRouter, app, server, io });
-    if (endpoints) {
-      pluginsEndpoints.push(...await Promise__default['default'].map(endpoints, schema => {
-        return CRUDEndpoint.parse(schema)
-      }));
-    }
   });
 
   // event wiring
@@ -1628,7 +1727,7 @@ async function apiSetup ({
     throw new ApiError(404)
   });
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage }
+  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
 }
 
 /**
@@ -1728,8 +1827,12 @@ exports.ApiError = ApiError;
 exports.Schemas = index$1;
 exports.apiSchemaValidationMiddleware = apiSchemaValidationMiddleware;
 exports.apiSetup = apiSetup;
+exports.classesToObj = classesToObj;
 exports.crudEndpointIntoRouter = crudEndpointIntoRouter;
 exports.duckRackToCrudEndpoints = duckRackToCrudEndpoints;
+exports.grabClasses = grabClasses;
+exports.grabClassesSync = grabClassesSync;
 exports.loadApiCrudDir = loadApiCrudDir;
 exports.loadEntitiesFromDir = loadEntitiesFromDir;
+exports.methodsToDuckfficer = methodsToDuckfficer;
 exports.plugins = index;

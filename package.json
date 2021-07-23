@@ -1,7 +1,7 @@
 {
   "name": "duck-api",
   "author": "Martin Rafael Gonzalez <tin@devtin.io>",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "main": "dist/duck-api.js",
   "module": "dist/duck-api.mjs",
   "license": "MIT",
@@ -72,10 +72,13 @@
   "dependencies": {
     "@devtin/schema-validator-doc": "^1.0.5",
     "@pleasure-js/utils": "pleasure-js/utils",
+    "async-busboy": "^1.1.0",
     "bluebird": "^3.7.2",
     "clean-deep": "^3.4.0",
     "deepmerge": "^4.2.2",
-    "duck-storage": "0.0.29",
+    "duck-storage": "0.0.30",
+    "duckfficer-method": "^1.0.3",
+    "duckfficer-method-di": "^1.0.2",
     "esm": "^3.2.25",
     "is-plain-object": "^5.0.0",
     "js-dir-into-json": "^2.7.1",

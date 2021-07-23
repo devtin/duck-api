@@ -6,71 +6,128 @@ import trim from 'lodash/trim'
 
 const { Schema, Utils } = Duckfficer
 
-const schemaValidatorToSwagger = (schema) => {
-  schema = Schema.ensureSchema(schema)
-
-  const getType = type => {
-    if (typeof type === 'object') {
-      if (type.type) {
-        return getType(type.type)
-      }
-      return 'object'
-    }
-    type = ((typeof type === 'function' ? type.name : type)||'string').toLowerCase()
-    const allowed = ['string', 'object' , 'number', 'integer', 'array', 'set']
-    return allowed.indexOf(type) >= 0 ? type : 'string'
+const getExample = (schema) => {
+  if (schema.settings.example) {
+    return schema.settings.example
   }
 
-  const getOpenApiSettingsFromType = (type, schemaSettings) => {
-    const openApiSettings = {}
+  if (getType(schema) === 'array' && schema.settings.arraySchema) {
+    return [getExample(Schema.ensureSchema(schema.settings.arraySchema))]
+  }
 
-    if (getType(type) === 'string') {
-      if (schemaSettings.settings.enum) {
-        Object.assign(openApiSettings, { enum: schemaSettings.settings.enum })
+  if (!schema.hasChildren) {
+    return ''
+  }
+
+  const example = {}
+
+  schema.children.forEach(child => {
+    if (!/^_/.test(child.name)) {
+      example[child.name] = getExample(child)
+    }
+  })
+
+  return example
+}
+
+const getType = (type) => {
+  if (typeof type === 'object' && !Array.isArray(type)) {
+    if (type.type) {
+      return getType(type.type)
+    }
+    return 'object'
+  }
+
+  const foundType = ((typeof type === 'function' ? type.name : type)||'string').toString().toLowerCase()
+
+  const allowed = ['string', 'object' , 'number', 'integer', 'array', 'file', 'date']
+  return allowed.indexOf(foundType) >= 0 ? foundType : 'string'
+}
+
+const processObject = ({ schema, requestType }) => {
+  const properties = {}
+  schema.children.forEach((children) => {
+    // console.log(`children`, children)
+
+    Object.assign(properties, {
+      [children.name]: schemaValidatorToSwagger(children, requestType)
+    })
+  })
+  // console.log(JSON.stringify({ properties }, null,2))
+  return {
+    properties
+  }
+}
+
+const schemaTypeToSwagger = {
+  array({ requestType, schema }){
+    // console.log('array!', { requestType, schema })
+    return {
+      items: schemaValidatorToSwagger(schema.settings.arraySchema, requestType) || 'string',
+      example: [getExample(schema)]
+    }
+  },
+  date () {
+    return {
+      type: 'string',
+      format: 'date-time'
+    }
+  },
+  file({ requestType }) {
+    if (requestType === 'request') {
+      return {
+        type: 'string',
+        format: 'binary'
       }
     }
 
-    if (getType(type) === 'array') {
-      Object.assign(openApiSettings, {
-        items: getType(schemaSettings.settings.arraySchema) || 'string'
-      })
+    return {
+      type: 'string'
     }
+  },
+  set () {
+    return {
+      type: 'array',
+      uniqueItems: true
+    }
+  },
+  string({ schema }) {
+    if (schema.settings.enum && schema.settings.enum.length > 0) {
+      return { enum: schema.settings.enum }
+    }
+  },
+  object: processObject
+}
 
-    if (getType(type) === 'set') {
-      Object.assign(openApiSettings, {
-        type: 'array',
-        uniqueItems: true
-      })
+const schemaValidatorToSwagger = (schema, requestType) => {
+  schema = Schema.ensureSchema(schema)
+
+  // todo: move this somewhere it can be override
+  const getOpenApiSettingsForSchema = (schema) => {
+    const openApiSettings = {}
+    const type = getType(schema)
+    const typeFn = schemaTypeToSwagger[type]
+
+    if (typeFn) {
+      Object.assign(openApiSettings, typeFn({ requestType, schema })||{})
     }
 
     return openApiSettings
   }
 
-  const remapContent = (obj) => {
-    const newObj = {}
+  const remapContent = (schema) => {
+    const obj = schemaValidatorToJSON(schema)
     if (!isNotNullObj(obj)) {
       return obj
     }
 
-    if (typeof obj.type === 'string') {
-      return {
-        type: getType(obj.type),
-        ...getOpenApiSettingsFromType(getType(obj), obj)
-      }
+    return {
+      type: getType(schema),
+      ...getOpenApiSettingsForSchema(schema)
     }
-
-    Object.keys(obj).forEach(pathName => {
-      if (/^\$/.test(pathName)) {
-        return
-      }
-      newObj[pathName] = remapContent(obj[pathName])
-    })
-
-    return newObj
   }
 
-  const output = remapContent(schemaValidatorToJSON(schema))
-  return schema.hasChildren ? { type: 'object', properties: output } : output
+  return remapContent(schema)
 }
 
 export function crudEndpointToOpenApi (crudEndpoint) {
@@ -90,27 +147,7 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     })
   }
 
-  const getExample = (schema) => {
-    if (schema.settings.example) {
-      return schema.settings.example
-    }
-
-    if (!schema.hasChildren) {
-      return ''
-    }
-
-    const example = {}
-
-    schema.children.forEach(child => {
-      if (!/^_/.test(child.name)) {
-        example[child.name] = getExample(child)
-      }
-    })
-
-    return example
-  }
-
-  const getRequestBody = schema => {
+  const getRequestBody = (schema) => {
     if (typeof schema === 'boolean' || !schema) {
       return
     }
@@ -118,22 +155,22 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     return {
       description: schema.settings.description,
       content: {
-        "application/json": {
-          schema: schemaValidatorToSwagger(schema),
+        "multipart/form-data": {
+          schema: schemaValidatorToSwagger(schema, 'request'),
           example: getExample(schema)
         }
       }
     }
   }
 
-  const convert = endpoint => {
+  const convert = (endpoint) => {
     if (!endpoint) {
       return
     }
 
     const { summary, description } = endpoint
     const getSchema = Schema.ensureSchema(endpoint.get)
-    const getSchemaJson = schemaValidatorToSwagger(getSchema)
+    const getSchemaJson = schemaValidatorToSwagger(getSchema, 'request')
 
     const requestBody = getRequestBody(endpoint.body)
 
@@ -152,7 +189,7 @@ export function crudEndpointToOpenApi (crudEndpoint) {
         // summary,
         content: {
           "application/json": {
-            schema: schemaValidatorToSwagger(outputSchema),
+            schema: schemaValidatorToSwagger(outputSchema, 'response'),
             example: getExample(outputSchema)
           }
         },

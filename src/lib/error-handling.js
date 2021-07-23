@@ -13,6 +13,7 @@ export async function errorHandling (ctx, next) {
   try {
     await next()
   } catch (error) {
+    console.log(error)
     const { code = 500, message, errors } = error
     const resultedError = {
       code,

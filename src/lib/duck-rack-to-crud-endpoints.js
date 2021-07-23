@@ -45,7 +45,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
     read: {
       access: entity.access.list,
       description: `finds many ${entity.name} by complex query`,
-      output: entity.duckModel.schema,
+      output: new Schema({ type: Array, arraySchema: entity.duckModel.schema }),
       get: {
         query: {
           type: Object,
@@ -83,7 +83,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
         type: 'Query'
       },
       body: updateSchema,
-      output: entity.duckModel.schema,
+      output: new Schema({ type: Array, arraySchema: entity.duckModel.schema }),
       async handler (ctx) {
         ctx.body = await duckRack.update(ctx.$pleasure.get, ctx.$pleasure.body, ctx.$pleasure.state)
       }

@@ -1,10 +1,9 @@
 import Router from 'koa-router'
-import koaBody from 'koa-body'
+import asyncBusboy from 'async-busboy'
 import koaNTS from 'koa-no-trailing-slash'
 import socketIo from 'socket.io'
 import flattenDeep from 'lodash/flattenDeep'
 import kebabCase from 'lodash/kebabCase'
-import startCase from 'lodash/startCase'
 import castArray from 'lodash/castArray'
 import cleanDeep from 'clean-deep'
 import { DuckStorageClass, registerDuckRacksFromDir, Duckfficer } from 'duck-storage'
@@ -19,6 +18,8 @@ import { registerDuckRacksFromObj } from 'duck-storage'
 import merge from 'deepmerge'
 import { isPlainObject } from 'is-plain-object'
 import { packageJson, findPackageJson } from '@pleasure-js/utils'
+import set from 'lodash/set'
+import koaBody from 'koa-body'
 
 import { ApiError } from './lib/api-error.js'
 import { crudEndpointIntoRouter } from './lib/crud-endpoint-into-router.js'
@@ -30,13 +31,23 @@ import { errorHandling } from './lib/error-handling.js'
 import { loadPlugin } from './lib/load-plugin.js'
 import { crudEndpointToOpenApi } from './lib/crud-endpoint-to-openapi.js'
 import { convertToDot } from './lib/utils/convert-to-dot'
+import { grabClasses } from './lib/grab-classes.js'
+import { classesToObj } from './lib/grab-classes-sync.js'
 
 const { Utils } = Duckfficer
-export const defaultKoaBodySettings = {
-  multipart: true,
-  jsonStrict: false,
-  parsedMethods: ['GET', 'POST', 'PUT', 'PATCH']
+export const defaultAsyncBusboySettings = {
 }
+
+const contains = (hash, needle) => {
+  return new RegExp(`^${needle}`).test(hash)
+}
+
+const requestCanBeHandledByBusboy = (ctx) => {
+  const ct = ctx.request.headers['content-type']
+  console.log(ct)
+  return contains(ct, 'application/x-www-form-urlencoded') || contains(ct, 'multipart/form-data');
+}
+
 // todo: replace apiDir (and api concept in general) for gateway
 /**
  * Orchestrates all koa middleware's required for the api
@@ -54,7 +65,7 @@ export const defaultKoaBodySettings = {
  * @param {Object} [options]
  * @param {String[]|Function[]} [options.plugins] - Koa plugins
  * @param {Object} [options.socketIOSettings] - Options for [socket.io]{@link https://socket.io/docs/server-api/}
- * @param {Object} [options.koaBodySettings] - Options for [koa-body]{@link https://github.com/dlau/koa-body}
+ * @param {Object} [options.asyncBusboySettings] - Options for [async-busboy]{@link https://github.com/m4nuC/async-busboy}
  * @param {Function} [options.customErrorHandling=errorHandling] - Koa middleware
  * @return {Promise.<{ io, mainRouter, apiRouter, entitiesRouter, apiEndpoints, entitiesEndpoints, pls }>} The koa `app`, the http `server` and the `socket.io` instance, `pls` the system pleasure instance
  * @see {@link https://github.com/koajs/koa} for documentation about the koa `app`
@@ -79,7 +90,7 @@ export async function apiSetup ({
   duckStorage,
   duckStoragePlugins = [],
   pluginsDir,
-}, { plugins = [], socketIOSettings = {}, koaBodySettings = defaultKoaBodySettings, customErrorHandling = errorHandling } = {}) {
+}, { plugins = [], socketIOSettings = {}, asyncBusboySettings = defaultAsyncBusboySettings, customErrorHandling = errorHandling } = {}) {
   const DuckStorage = duckStorage || await new DuckStorageClass({
     plugins: duckStoragePlugins
   })
@@ -102,10 +113,8 @@ export async function apiSetup ({
   })
 
   app.use(koaNTS())
+  app.use(koaBody())
   app.use(customErrorHandling)
-
-  // required for the crud logic
-  app.use(koaBody(koaBodySettings))
 
   // ctx setup
   app.use((ctx, next) => {
@@ -122,32 +131,45 @@ export async function apiSetup ({
     return next()
   })
 
-  // todo: abstract in a plugin
-  app.use((ctx, next) => {
-    ctx.$pleasure.get = ctx.request.querystring ? qs.parse(ctx.request.querystring, { parseNumbers: true }) : {}
-    if (ctx.request.body && ctx.request.body.$params) {
-      if (Object.keys(ctx.$pleasure.get).length > 0) {
-        console.log(`careful! using both params & body on a get request`)
-      }
-      ctx.$pleasure.get = ctx.request.body.$params
-      delete ctx.request.body.$params
+  const io = socketIo(server, socketIOSettings)
+
+  const pluginsEndpoints = []
+
+  // load plugins
+  await Promise.each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
+    const endpoints = await plugin({ router: mainRouter, app, server, io })
+    if (endpoints) {
+      pluginsEndpoints.push(...await Promise.map(endpoints, schema => {
+        return CRUDEndpoint.parse(schema)
+      }))
     }
-    ctx.$pleasure.body = ctx.request.body
+  })
+
+  // todo: abstract in a plugin
+  app.use(async (ctx, next) => {
+    ctx.$pleasure.get = ctx.request.querystring ? qs.parse(ctx.request.querystring, { parseNumbers: true }) : {}
+
+    const method = ctx.request.method.toLowerCase()
+    if (
+      method === 'post' ||
+      method === 'patch'
+    ) {
+      if (requestCanBeHandledByBusboy(ctx)) {
+        const { fields, files } = await asyncBusboy(ctx.req)
+
+        files.forEach((file) => {
+          set(fields, file.fieldname, file)
+        })
+
+        ctx.$pleasure.body = fields
+        ctx.$pleasure.files = files
+      } else {
+        ctx.$pleasure.body = ctx.request.body
+      }
+    }
 
     return next()
   })
-
-  const grabGateways = async (gatewayDir) => {
-    const gateways = await jsDirIntoJson(gatewayDir, {
-      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
-    })
-    return Object.keys(gateways).map(name => {
-      return {
-        name: startCase(name).replace(/\s+/g, ''),
-        methods: gateways[name].methods
-      }
-    })
-  }
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
     path2dot: convertToDot,
@@ -244,13 +266,11 @@ export async function apiSetup ({
     return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }))
 
-  const gateways = gatewaysDir ? await grabGateways(gatewaysDir) : []
+  const gateways = gatewaysDir ? await grabClasses(gatewaysDir) : []
   const gatewaysEndpoints = flattenDeep(await Promise.map(gateways, gatewayToCrudEndpoints))
 
-  const services = gatewaysDir ? await grabGateways(servicesDir) : []
+  const services = servicesDir ? await grabClasses(servicesDir) : []
   const servicesEndpoints = flattenDeep(await Promise.map(services, gatewayToCrudEndpoints))
-
-  const io = socketIo(server, socketIOSettings)
 
   const registeredEntities = {}
 
@@ -262,17 +282,6 @@ export async function apiSetup ({
   racksRouter.get('/', ctx => {
     // todo: filter per user-permission
     ctx.body = registeredEntities
-  })
-
-  const pluginsEndpoints = []
-
-  await Promise.each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
-    const endpoints = plugin({ router: mainRouter, app, server, io })
-    if (endpoints) {
-      pluginsEndpoints.push(...await Promise.map(endpoints, schema => {
-        return CRUDEndpoint.parse(schema)
-      }))
-    }
   })
 
   // event wiring
@@ -452,5 +461,5 @@ export async function apiSetup ({
     throw new ApiError(404)
   })
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage }
+  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
 }

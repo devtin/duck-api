@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.18
+ * duck-api v0.0.19
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -12,20 +12,23 @@ import path from 'path';
 import { deepScanDir, findPackageJson, packageJson } from '@pleasure-js/utils';
 import Promise$1 from 'bluebird';
 import kebabCase from 'lodash/kebabCase';
+import { jsDirIntoJsonSync, jsDirIntoJson } from 'js-dir-into-json';
+import startCase$1 from 'lodash/startCase';
+import { duckfficerMethod } from 'duckfficer-method';
 import Router from 'koa-router';
-import koaBody from 'koa-body';
+import asyncBusboy from 'async-busboy';
 import koaNTS from 'koa-no-trailing-slash';
 import socketIo from 'socket.io';
 import flattenDeep from 'lodash/flattenDeep';
-import startCase$1 from 'lodash/startCase';
 import castArray from 'lodash/castArray';
 import cleanDeep from 'clean-deep';
 import qs from 'query-string';
-import { jsDirIntoJson } from 'js-dir-into-json';
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc';
 import fs from 'fs';
 import merge from 'deepmerge';
 import { isPlainObject } from 'is-plain-object';
+import set from 'lodash/set';
+import koaBody from 'koa-body';
 import omit from 'lodash/omit';
 import trim from 'lodash/trim';
 import mapValues from 'lodash/mapValues';
@@ -617,7 +620,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
     read: {
       access: entity.access.list,
       description: `finds many ${entity.name} by complex query`,
-      output: entity.duckModel.schema,
+      output: new Schema$1({ type: Array, arraySchema: entity.duckModel.schema }),
       get: {
         query: {
           type: Object,
@@ -655,7 +658,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
         type: 'Query'
       },
       body: updateSchema,
-      output: entity.duckModel.schema,
+      output: new Schema$1({ type: Array, arraySchema: entity.duckModel.schema }),
       async handler (ctx) {
         ctx.body = await duckRack.update(ctx.$pleasure.get, ctx.$pleasure.body, ctx.$pleasure.state);
       }
@@ -826,6 +829,56 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
   return crudEndpoints
 }
 
+const methodsToDuckfficer = (methods) => {
+  const methodsObj = {};
+
+  Object.keys(methods).forEach((methodName) => {
+    const method = duckfficerMethod(methods[methodName]);
+    methodsObj[methodName] = async (...payload) => {
+      try {
+        const { output } = await method(...payload);
+        return output
+      } catch (error) {
+        throw error.originalError
+      }
+    };
+  });
+
+  return methodsObj
+};
+
+const classesToObj = (classesArray) => {
+  return classesArray.reduce((objClass, currentClass) => {
+    return Object.assign(objClass, {
+      [currentClass.name]: methodsToDuckfficer(currentClass.methods)
+    })
+  }, {})
+};
+
+const grabClassesSync = (classesPath) => {
+  const gateways = jsDirIntoJsonSync(classesPath, {
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
+  });
+  return Object.keys(gateways).map(name => {
+    return {
+      name: startCase$1(name).replace(/\s+/g, ''),
+      methods: gateways[name].methods
+    }
+  })
+};
+
+const grabClasses = async (classesPath) => {
+  const gateways = await jsDirIntoJson(classesPath, {
+    extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
+  });
+  return Object.keys(gateways).map(name => {
+    return {
+      name: startCase$1(name).replace(/\s+/g, ''),
+      methods: gateways[name].methods
+    }
+  })
+};
+
 function convertToPath (dirPath) {
   return trim(dirPath, '/').replace(/((^|\/)index)?\.js(on)?$/i, '').split('/').map((name) => {
     const propPrefix = /^_/.test(name) ? ':' : '';
@@ -891,6 +944,7 @@ async function errorHandling (ctx, next) {
   try {
     await next();
   } catch (error) {
+    console.log(error);
     const { code = 500, message, errors } = error;
     const resultedError = {
       code,
@@ -958,71 +1012,128 @@ function loadPlugin (baseDir = process.cwd(), pluginName) {
 
 const { Schema, Utils: Utils$1 } = Duckfficer;
 
-const schemaValidatorToSwagger = (schema) => {
+const getExample = (schema) => {
+  if (schema.settings.example) {
+    return schema.settings.example
+  }
+
+  if (getType(schema) === 'array' && schema.settings.arraySchema) {
+    return [getExample(Schema.ensureSchema(schema.settings.arraySchema))]
+  }
+
+  if (!schema.hasChildren) {
+    return ''
+  }
+
+  const example = {};
+
+  schema.children.forEach(child => {
+    if (!/^_/.test(child.name)) {
+      example[child.name] = getExample(child);
+    }
+  });
+
+  return example
+};
+
+const getType = (type) => {
+  if (typeof type === 'object' && !Array.isArray(type)) {
+    if (type.type) {
+      return getType(type.type)
+    }
+    return 'object'
+  }
+
+  const foundType = ((typeof type === 'function' ? type.name : type)||'string').toString().toLowerCase();
+
+  const allowed = ['string', 'object' , 'number', 'integer', 'array', 'file', 'date'];
+  return allowed.indexOf(foundType) >= 0 ? foundType : 'string'
+};
+
+const processObject = ({ schema, requestType }) => {
+  const properties = {};
+  schema.children.forEach((children) => {
+    // console.log(`children`, children)
+
+    Object.assign(properties, {
+      [children.name]: schemaValidatorToSwagger(children, requestType)
+    });
+  });
+  // console.log(JSON.stringify({ properties }, null,2))
+  return {
+    properties
+  }
+};
+
+const schemaTypeToSwagger = {
+  array({ requestType, schema }){
+    // console.log('array!', { requestType, schema })
+    return {
+      items: schemaValidatorToSwagger(schema.settings.arraySchema, requestType) || 'string',
+      example: [getExample(schema)]
+    }
+  },
+  date () {
+    return {
+      type: 'string',
+      format: 'date-time'
+    }
+  },
+  file({ requestType }) {
+    if (requestType === 'request') {
+      return {
+        type: 'string',
+        format: 'binary'
+      }
+    }
+
+    return {
+      type: 'string'
+    }
+  },
+  set () {
+    return {
+      type: 'array',
+      uniqueItems: true
+    }
+  },
+  string({ schema }) {
+    if (schema.settings.enum && schema.settings.enum.length > 0) {
+      return { enum: schema.settings.enum }
+    }
+  },
+  object: processObject
+};
+
+const schemaValidatorToSwagger = (schema, requestType) => {
   schema = Schema.ensureSchema(schema);
 
-  const getType = type => {
-    if (typeof type === 'object') {
-      if (type.type) {
-        return getType(type.type)
-      }
-      return 'object'
-    }
-    type = ((typeof type === 'function' ? type.name : type)||'string').toLowerCase();
-    const allowed = ['string', 'object' , 'number', 'integer', 'array', 'set'];
-    return allowed.indexOf(type) >= 0 ? type : 'string'
-  };
-
-  const getOpenApiSettingsFromType = (type, schemaSettings) => {
+  // todo: move this somewhere it can be override
+  const getOpenApiSettingsForSchema = (schema) => {
     const openApiSettings = {};
+    const type = getType(schema);
+    const typeFn = schemaTypeToSwagger[type];
 
-    if (getType(type) === 'string') {
-      if (schemaSettings.settings.enum) {
-        Object.assign(openApiSettings, { enum: schemaSettings.settings.enum });
-      }
-    }
-
-    if (getType(type) === 'array') {
-      Object.assign(openApiSettings, {
-        items: getType(schemaSettings.settings.arraySchema) || 'string'
-      });
-    }
-
-    if (getType(type) === 'set') {
-      Object.assign(openApiSettings, {
-        type: 'array',
-        uniqueItems: true
-      });
+    if (typeFn) {
+      Object.assign(openApiSettings, typeFn({ requestType, schema })||{});
     }
 
     return openApiSettings
   };
 
-  const remapContent = (obj) => {
-    const newObj = {};
+  const remapContent = (schema) => {
+    const obj = schemaValidatorToJSON(schema);
     if (!isNotNullObj(obj)) {
       return obj
     }
 
-    if (typeof obj.type === 'string') {
-      return {
-        type: getType(obj.type),
-        ...getOpenApiSettingsFromType(getType(obj), obj)
-      }
+    return {
+      type: getType(schema),
+      ...getOpenApiSettingsForSchema(schema)
     }
-
-    Object.keys(obj).forEach(pathName => {
-      if (/^\$/.test(pathName)) {
-        return
-      }
-      newObj[pathName] = remapContent(obj[pathName]);
-    });
-
-    return newObj
   };
 
-  const output = remapContent(schemaValidatorToJSON(schema));
-  return schema.hasChildren ? { type: 'object', properties: output } : output
+  return remapContent(schema)
 };
 
 function crudEndpointToOpenApi (crudEndpoint) {
@@ -1042,27 +1153,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
     })
   };
 
-  const getExample = (schema) => {
-    if (schema.settings.example) {
-      return schema.settings.example
-    }
-
-    if (!schema.hasChildren) {
-      return ''
-    }
-
-    const example = {};
-
-    schema.children.forEach(child => {
-      if (!/^_/.test(child.name)) {
-        example[child.name] = getExample(child);
-      }
-    });
-
-    return example
-  };
-
-  const getRequestBody = schema => {
+  const getRequestBody = (schema) => {
     if (typeof schema === 'boolean' || !schema) {
       return
     }
@@ -1070,22 +1161,22 @@ function crudEndpointToOpenApi (crudEndpoint) {
     return {
       description: schema.settings.description,
       content: {
-        "application/json": {
-          schema: schemaValidatorToSwagger(schema),
+        "multipart/form-data": {
+          schema: schemaValidatorToSwagger(schema, 'request'),
           example: getExample(schema)
         }
       }
     }
   };
 
-  const convert = endpoint => {
+  const convert = (endpoint) => {
     if (!endpoint) {
       return
     }
 
     const { summary, description } = endpoint;
     const getSchema = Schema.ensureSchema(endpoint.get);
-    const getSchemaJson = schemaValidatorToSwagger(getSchema);
+    const getSchemaJson = schemaValidatorToSwagger(getSchema, 'request');
 
     const requestBody = getRequestBody(endpoint.body);
 
@@ -1104,7 +1195,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
         // summary,
         content: {
           "application/json": {
-            schema: schemaValidatorToSwagger(outputSchema),
+            schema: schemaValidatorToSwagger(outputSchema, 'response'),
             example: getExample(outputSchema)
           }
         },
@@ -1163,11 +1254,19 @@ function convertToDot (dirPath) {
 }
 
 const { Utils } = Duckfficer;
-const defaultKoaBodySettings = {
-  multipart: true,
-  jsonStrict: false,
-  parsedMethods: ['GET', 'POST', 'PUT', 'PATCH']
+const defaultAsyncBusboySettings = {
 };
+
+const contains = (hash, needle) => {
+  return new RegExp(`^${needle}`).test(hash)
+};
+
+const requestCanBeHandledByBusboy = (ctx) => {
+  const ct = ctx.request.headers['content-type'];
+  console.log(ct);
+  return contains(ct, 'application/x-www-form-urlencoded') || contains(ct, 'multipart/form-data');
+};
+
 // todo: replace apiDir (and api concept in general) for gateway
 /**
  * Orchestrates all koa middleware's required for the api
@@ -1185,7 +1284,7 @@ const defaultKoaBodySettings = {
  * @param {Object} [options]
  * @param {String[]|Function[]} [options.plugins] - Koa plugins
  * @param {Object} [options.socketIOSettings] - Options for [socket.io]{@link https://socket.io/docs/server-api/}
- * @param {Object} [options.koaBodySettings] - Options for [koa-body]{@link https://github.com/dlau/koa-body}
+ * @param {Object} [options.asyncBusboySettings] - Options for [async-busboy]{@link https://github.com/m4nuC/async-busboy}
  * @param {Function} [options.customErrorHandling=errorHandling] - Koa middleware
  * @return {Promise.<{ io, mainRouter, apiRouter, entitiesRouter, apiEndpoints, entitiesEndpoints, pls }>} The koa `app`, the http `server` and the `socket.io` instance, `pls` the system pleasure instance
  * @see {@link https://github.com/koajs/koa} for documentation about the koa `app`
@@ -1210,7 +1309,7 @@ async function apiSetup ({
   duckStorage,
   duckStoragePlugins = [],
   pluginsDir,
-}, { plugins = [], socketIOSettings = {}, koaBodySettings = defaultKoaBodySettings, customErrorHandling = errorHandling } = {}) {
+}, { plugins = [], socketIOSettings = {}, asyncBusboySettings = defaultAsyncBusboySettings, customErrorHandling = errorHandling } = {}) {
   const DuckStorage = duckStorage || await new DuckStorageClass({
     plugins: duckStoragePlugins
   });
@@ -1233,10 +1332,8 @@ async function apiSetup ({
   });
 
   app.use(koaNTS());
+  app.use(koaBody());
   app.use(customErrorHandling);
-
-  // required for the crud logic
-  app.use(koaBody(koaBodySettings));
 
   // ctx setup
   app.use((ctx, next) => {
@@ -1253,32 +1350,45 @@ async function apiSetup ({
     return next()
   });
 
-  // todo: abstract in a plugin
-  app.use((ctx, next) => {
-    ctx.$pleasure.get = ctx.request.querystring ? qs.parse(ctx.request.querystring, { parseNumbers: true }) : {};
-    if (ctx.request.body && ctx.request.body.$params) {
-      if (Object.keys(ctx.$pleasure.get).length > 0) {
-        console.log(`careful! using both params & body on a get request`);
-      }
-      ctx.$pleasure.get = ctx.request.body.$params;
-      delete ctx.request.body.$params;
+  const io = socketIo(server, socketIOSettings);
+
+  const pluginsEndpoints = [];
+
+  // load plugins
+  await Promise$1.each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
+    const endpoints = await plugin({ router: mainRouter, app, server, io });
+    if (endpoints) {
+      pluginsEndpoints.push(...await Promise$1.map(endpoints, schema => {
+        return CRUDEndpoint.parse(schema)
+      }));
     }
-    ctx.$pleasure.body = ctx.request.body;
+  });
+
+  // todo: abstract in a plugin
+  app.use(async (ctx, next) => {
+    ctx.$pleasure.get = ctx.request.querystring ? qs.parse(ctx.request.querystring, { parseNumbers: true }) : {};
+
+    const method = ctx.request.method.toLowerCase();
+    if (
+      method === 'post' ||
+      method === 'patch'
+    ) {
+      if (requestCanBeHandledByBusboy(ctx)) {
+        const { fields, files } = await asyncBusboy(ctx.req);
+
+        files.forEach((file) => {
+          set(fields, file.fieldname, file);
+        });
+
+        ctx.$pleasure.body = fields;
+        ctx.$pleasure.files = files;
+      } else {
+        ctx.$pleasure.body = ctx.request.body;
+      }
+    }
 
     return next()
   });
-
-  const grabGateways = async (gatewayDir) => {
-    const gateways = await jsDirIntoJson(gatewayDir, {
-      extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
-    });
-    return Object.keys(gateways).map(name => {
-      return {
-        name: startCase$1(name).replace(/\s+/g, ''),
-        methods: gateways[name].methods
-      }
-    })
-  };
 
   const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
     path2dot: convertToDot,
@@ -1375,13 +1485,11 @@ async function apiSetup ({
     return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }));
 
-  const gateways = gatewaysDir ? await grabGateways(gatewaysDir) : [];
+  const gateways = gatewaysDir ? await grabClasses(gatewaysDir) : [];
   const gatewaysEndpoints = flattenDeep(await Promise$1.map(gateways, gatewayToCrudEndpoints));
 
-  const services = gatewaysDir ? await grabGateways(servicesDir) : [];
+  const services = servicesDir ? await grabClasses(servicesDir) : [];
   const servicesEndpoints = flattenDeep(await Promise$1.map(services, gatewayToCrudEndpoints));
-
-  const io = socketIo(server, socketIOSettings);
 
   const registeredEntities = {};
 
@@ -1393,17 +1501,6 @@ async function apiSetup ({
   racksRouter.get('/', ctx => {
     // todo: filter per user-permission
     ctx.body = registeredEntities;
-  });
-
-  const pluginsEndpoints = [];
-
-  await Promise$1.each(plugins.map(loadPlugin.bind(null, pluginsDir)), async plugin => {
-    const endpoints = plugin({ router: mainRouter, app, server, io });
-    if (endpoints) {
-      pluginsEndpoints.push(...await Promise$1.map(endpoints, schema => {
-        return CRUDEndpoint.parse(schema)
-      }));
-    }
   });
 
   // event wiring
@@ -1583,7 +1680,7 @@ async function apiSetup ({
     throw new ApiError(404)
   });
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage }
+  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
 }
 
 /**
@@ -1678,4 +1775,4 @@ var index = /*#__PURE__*/Object.freeze({
   jwtAccess: jwtAccess
 });
 
-export { ApiError, index$1 as Schemas, apiSchemaValidationMiddleware, apiSetup, crudEndpointIntoRouter, duckRackToCrudEndpoints, loadApiCrudDir, loadEntitiesFromDir, index as plugins };
+export { ApiError, index$1 as Schemas, apiSchemaValidationMiddleware, apiSetup, classesToObj, crudEndpointIntoRouter, duckRackToCrudEndpoints, grabClasses, grabClassesSync, loadApiCrudDir, loadEntitiesFromDir, methodsToDuckfficer, index as plugins };
