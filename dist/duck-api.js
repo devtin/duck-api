@@ -1301,8 +1301,6 @@ function convertToDot (dirPath) {
 }
 
 const { Utils } = duckStorage.Duckfficer;
-const defaultAsyncBusboySettings = {
-};
 
 const contains = (hash, needle) => {
   return new RegExp(`^${needle}`).test(hash)
@@ -1310,7 +1308,6 @@ const contains = (hash, needle) => {
 
 const requestCanBeHandledByBusboy = (ctx) => {
   const ct = ctx.request.headers['content-type'];
-  console.log(ct);
   return contains(ct, 'application/x-www-form-urlencoded') || contains(ct, 'multipart/form-data');
 };
 
@@ -1331,7 +1328,6 @@ const requestCanBeHandledByBusboy = (ctx) => {
  * @param {Object} [options]
  * @param {String[]|Function[]} [options.plugins] - Koa plugins
  * @param {Object} [options.socketIOSettings] - Options for [socket.io]{@link https://socket.io/docs/server-api/}
- * @param {Object} [options.asyncBusboySettings] - Options for [async-busboy]{@link https://github.com/m4nuC/async-busboy}
  * @param {Function} [options.customErrorHandling=errorHandling] - Koa middleware
  * @return {Promise.<{ io, mainRouter, apiRouter, entitiesRouter, apiEndpoints, entitiesEndpoints, pls }>} The koa `app`, the http `server` and the `socket.io` instance, `pls` the system pleasure instance
  * @see {@link https://github.com/koajs/koa} for documentation about the koa `app`
@@ -1354,12 +1350,9 @@ async function apiSetup ({
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
   duckStorage: duckStorage$1,
-  duckStoragePlugins = [],
   pluginsDir,
-}, { plugins = [], socketIOSettings = {}, asyncBusboySettings = defaultAsyncBusboySettings, customErrorHandling = errorHandling } = {}) {
-  const DuckStorage = duckStorage$1 || await new duckStorage.DuckStorageClass({
-    plugins: duckStoragePlugins
-  });
+}, { duckStorageSettings, plugins = [], socketIOSettings = {}, customErrorHandling = errorHandling } = {}) {
+  const DuckStorage = duckStorage$1 || await new duckStorage.DuckStorageClass(duckStorageSettings);
   const mainRouter = Router__default['default']();
 
   const servicesRouter = Router__default['default']({
