@@ -3,16 +3,26 @@ import { Duckfficer } from 'duck-storage'
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc'
 import { isNotNullObj } from './is-not-null-obj'
 import trim from 'lodash/trim'
+import forEach from 'lodash/forEach'
 
-const { Schema, Utils } = Duckfficer
+const { Schema, Utils, Transformers } = Duckfficer
+
+const getSchema = (schema) => {
+  if (schema.type && /^\$/.test(schema.type) && Transformers[schema.type]) {
+    return Schema.ensureSchema(Transformers[schema.type])
+  }
+  return Schema.ensureSchema(schema);
+}
 
 const getExample = (schema) => {
+  schema = getSchema(schema)
+
   if (schema.settings.example) {
     return schema.settings.example
   }
 
   if (getType(schema) === 'array' && schema.settings.arraySchema) {
-    return [getExample(Schema.ensureSchema(schema.settings.arraySchema))]
+    return [getExample(getSchema(schema.settings.arraySchema))]
   }
 
   if (!schema.hasChildren) {
@@ -35,6 +45,10 @@ const getType = (type) => {
     if (type.type) {
       return getType(type.type)
     }
+    return 'object'
+  }
+
+  if (/^\$/.test(type)) {
     return 'object'
   }
 
@@ -100,7 +114,7 @@ const schemaTypeToSwagger = {
 }
 
 const schemaValidatorToSwagger = (schema, requestType) => {
-  schema = Schema.ensureSchema(schema)
+  schema = getSchema(schema)
 
   // todo: move this somewhere it can be override
   const getOpenApiSettingsForSchema = (schema) => {
@@ -147,6 +161,19 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     })
   }
 
+  const schemaHasFileUpload = (schema) => {
+    if (schema.hasChildren) {
+      let hasFile = false
+      forEach(schema.children, (child) => {
+        hasFile = schemaHasFileUpload(child)
+        return !hasFile
+      })
+      return hasFile
+    }
+
+    return schema.type === 'File'
+  }
+
   const getRequestBody = (schema) => {
     if (typeof schema === 'boolean' || !schema) {
       return
@@ -155,7 +182,7 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     return {
       description: schema.settings.description,
       content: {
-        "multipart/form-data": {
+        [schemaHasFileUpload(schema) ? "multipart/form-data" : "application/json"]: {
           schema: schemaValidatorToSwagger(schema, 'request'),
           example: getExample(schema)
         }
@@ -169,8 +196,8 @@ export function crudEndpointToOpenApi (crudEndpoint) {
     }
 
     const { summary, description } = endpoint
-    const getSchema = Schema.ensureSchema(endpoint.get)
-    const getSchemaJson = schemaValidatorToSwagger(getSchema, 'request')
+    const GETSchema = getSchema(endpoint.get);
+    const getSchemaJson = schemaValidatorToSwagger(GETSchema, 'request')
 
     const requestBody = getRequestBody(endpoint.body)
 
@@ -197,17 +224,17 @@ export function crudEndpointToOpenApi (crudEndpoint) {
       }
     })
 
-    const parameters = getPathParams().concat(getSchema.paths.map(pathName => {
-      if (getSchema.schemaAtPath(pathName).hasChildren) {
+    const parameters = getPathParams().concat(GETSchema.paths.map(pathName => {
+      if (GETSchema.schemaAtPath(pathName).hasChildren) {
         return
       }
       return {
         name: pathName,
         in: "query",
-        description: getSchema.schemaAtPath(pathName).settings.description,
-        required: getSchema.schemaAtPath(pathName).settings.required,
-        example: getSchema.schemaAtPath(pathName).settings.example,
-        enum: getSchema.schemaAtPath(pathName).settings.enum,
+        description: GETSchema.schemaAtPath(pathName).settings.description,
+        required: GETSchema.schemaAtPath(pathName).settings.required,
+        example: GETSchema.schemaAtPath(pathName).settings.example,
+        enum: GETSchema.schemaAtPath(pathName).settings.enum,
         schema: Utils.find(getSchemaJson, pathName),
         style: "simple"
       }

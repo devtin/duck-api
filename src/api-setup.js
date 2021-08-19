@@ -34,7 +34,7 @@ import { convertToDot } from './lib/utils/convert-to-dot'
 import { grabClasses } from './lib/grab-classes.js'
 import { classesToObj } from './lib/grab-classes-sync.js'
 
-const { Utils } = Duckfficer
+const { Utils, Transformers } = Duckfficer
 
 const contains = (hash, needle) => {
   return new RegExp(`^${needle}`).test(hash)
@@ -240,6 +240,8 @@ export async function apiSetup ({
   }
 
   racks = await Promise.map(racks, async rack => {
+    Transformers[`$${rack.name}`] = rack.duckModel.schema
+
     const toMerge = [
       {
         file: rack.name,

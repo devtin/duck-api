@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.21
+ * duck-api v0.0.23
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -34,6 +34,7 @@ var koaBody = require('koa-body');
 var omit = require('lodash/omit');
 var trim = require('lodash/trim');
 var mapValues = require('lodash/mapValues');
+var forEach = require('lodash/forEach');
 var jsonwebtoken = require('jsonwebtoken');
 
 function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
@@ -80,6 +81,7 @@ var koaBody__default = /*#__PURE__*/_interopDefaultLegacy(koaBody);
 var omit__default = /*#__PURE__*/_interopDefaultLegacy(omit);
 var trim__default = /*#__PURE__*/_interopDefaultLegacy(trim);
 var mapValues__default = /*#__PURE__*/_interopDefaultLegacy(mapValues);
+var forEach__default = /*#__PURE__*/_interopDefaultLegacy(forEach);
 
 const statusCodes = {
   200: 'OK',
@@ -114,15 +116,15 @@ function isNotNullObj (obj) {
   return typeof obj === 'object' && obj !== null && !Array.isArray(obj)
 }
 
-const { Schema: Schema$7, Transformers } = duckStorage.Duckfficer;
+const { Schema: Schema$7, Transformers: Transformers$2 } = duckStorage.Duckfficer;
 
 
-Transformers.Input = {
+Transformers$2.Input = {
   settings: {
     autoCast: true
   },
   cast (v) {
-    if (isNotNullObj(v) || (typeof v === 'function' &&  Transformers[v.name])) {
+    if (isNotNullObj(v) || (typeof v === 'function' &&  Transformers$2[v.name])) {
       return Schema$7.ensureSchema(typeof v === 'function' ? { type: v } : v)
     }
     return v
@@ -134,7 +136,7 @@ Transformers.Input = {
   }
 };
 
-Transformers.Output = (() => {
+Transformers$2.Output = (() => {
   const allKeysAreNumbers = obj => {
     if (isNotNullObj(obj)) {
       return Object.keys(obj).reduce((valid, key) => {
@@ -1057,15 +1059,24 @@ function loadPlugin (baseDir = process.cwd(), pluginName) {
   return plugin.bind(pluginState)
 }
 
-const { Schema, Utils: Utils$1 } = duckStorage.Duckfficer;
+const { Schema, Utils: Utils$1, Transformers: Transformers$1 } = duckStorage.Duckfficer;
+
+const getSchema = (schema) => {
+  if (schema.type && /^\$/.test(schema.type) && Transformers$1[schema.type]) {
+    return Schema.ensureSchema(Transformers$1[schema.type])
+  }
+  return Schema.ensureSchema(schema);
+};
 
 const getExample = (schema) => {
+  schema = getSchema(schema);
+
   if (schema.settings.example) {
     return schema.settings.example
   }
 
   if (getType(schema) === 'array' && schema.settings.arraySchema) {
-    return [getExample(Schema.ensureSchema(schema.settings.arraySchema))]
+    return [getExample(getSchema(schema.settings.arraySchema))]
   }
 
   if (!schema.hasChildren) {
@@ -1088,6 +1099,10 @@ const getType = (type) => {
     if (type.type) {
       return getType(type.type)
     }
+    return 'object'
+  }
+
+  if (/^\$/.test(type)) {
     return 'object'
   }
 
@@ -1153,7 +1168,7 @@ const schemaTypeToSwagger = {
 };
 
 const schemaValidatorToSwagger = (schema, requestType) => {
-  schema = Schema.ensureSchema(schema);
+  schema = getSchema(schema);
 
   // todo: move this somewhere it can be override
   const getOpenApiSettingsForSchema = (schema) => {
@@ -1200,6 +1215,19 @@ function crudEndpointToOpenApi (crudEndpoint) {
     })
   };
 
+  const schemaHasFileUpload = (schema) => {
+    if (schema.hasChildren) {
+      let hasFile = false;
+      forEach__default['default'](schema.children, (child) => {
+        hasFile = schemaHasFileUpload(child);
+        return !hasFile
+      });
+      return hasFile
+    }
+
+    return schema.type === 'File'
+  };
+
   const getRequestBody = (schema) => {
     if (typeof schema === 'boolean' || !schema) {
       return
@@ -1208,7 +1236,7 @@ function crudEndpointToOpenApi (crudEndpoint) {
     return {
       description: schema.settings.description,
       content: {
-        "multipart/form-data": {
+        [schemaHasFileUpload(schema) ? "multipart/form-data" : "application/json"]: {
           schema: schemaValidatorToSwagger(schema, 'request'),
           example: getExample(schema)
         }
@@ -1222,8 +1250,8 @@ function crudEndpointToOpenApi (crudEndpoint) {
     }
 
     const { summary, description } = endpoint;
-    const getSchema = Schema.ensureSchema(endpoint.get);
-    const getSchemaJson = schemaValidatorToSwagger(getSchema, 'request');
+    const GETSchema = getSchema(endpoint.get);
+    const getSchemaJson = schemaValidatorToSwagger(GETSchema, 'request');
 
     const requestBody = getRequestBody(endpoint.body);
 
@@ -1250,17 +1278,17 @@ function crudEndpointToOpenApi (crudEndpoint) {
       }
     });
 
-    const parameters = getPathParams().concat(getSchema.paths.map(pathName => {
-      if (getSchema.schemaAtPath(pathName).hasChildren) {
+    const parameters = getPathParams().concat(GETSchema.paths.map(pathName => {
+      if (GETSchema.schemaAtPath(pathName).hasChildren) {
         return
       }
       return {
         name: pathName,
         in: "query",
-        description: getSchema.schemaAtPath(pathName).settings.description,
-        required: getSchema.schemaAtPath(pathName).settings.required,
-        example: getSchema.schemaAtPath(pathName).settings.example,
-        enum: getSchema.schemaAtPath(pathName).settings.enum,
+        description: GETSchema.schemaAtPath(pathName).settings.description,
+        required: GETSchema.schemaAtPath(pathName).settings.required,
+        example: GETSchema.schemaAtPath(pathName).settings.example,
+        enum: GETSchema.schemaAtPath(pathName).settings.enum,
         schema: Utils$1.find(getSchemaJson, pathName),
         style: "simple"
       }
@@ -1300,7 +1328,7 @@ function convertToDot (dirPath) {
   }).join('.')
 }
 
-const { Utils } = duckStorage.Duckfficer;
+const { Utils, Transformers } = duckStorage.Duckfficer;
 
 const contains = (hash, needle) => {
   return new RegExp(`^${needle}`).test(hash)
@@ -1506,6 +1534,8 @@ async function apiSetup ({
   };
 
   racks = await Promise__default['default'].map(racks, async rack => {
+    Transformers[`$${rack.name}`] = rack.duckModel.schema;
+
     const toMerge = [
       {
         file: rack.name,
