@@ -39,7 +39,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
       body: entity.duckModel.schema,
       output: entity.duckModel.schema,
       async handler (ctx) {
-        ctx.body = await duckRack.create(ctx.$pleasure.body, ctx.$pleasure.state)
+        ctx.$pleasure.response = await duckRack.create(ctx.$pleasure.body, ctx.$pleasure.state)
       }
     },
     read: {
@@ -73,7 +73,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
         if (!doc) {
           return next()
         }
-        ctx.body = doc
+        ctx.$pleasure.response = doc
       }
     },
     update: {
@@ -85,7 +85,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
       body: updateSchema,
       output: new Schema({ type: Array, arraySchema: entity.duckModel.schema }),
       async handler (ctx) {
-        ctx.body = await duckRack.update(ctx.$pleasure.get, ctx.$pleasure.body, ctx.$pleasure.state)
+        ctx.$pleasure.response = await duckRack.update(ctx.$pleasure.get, ctx.$pleasure.body, ctx.$pleasure.state)
       }
     },
     delete: {
@@ -95,7 +95,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
         type: 'Query'
       },
       async handler (ctx) {
-        ctx.body = await duckRack.delete(ctx.$pleasure.get, ctx.$pleasure.state)
+        ctx.$pleasure.response = await duckRack.delete(ctx.$pleasure.get, ctx.$pleasure.state)
       }
     }
   }))
@@ -115,7 +115,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
           body: verb !== 'get' ? input : undefined,
           output,
           async handler (ctx) {
-            ctx.body = await handler.call(duckRack, ctx.$pleasure[verb === 'get' ? 'get' : 'body'], { state: ctx.$pleasure.state })
+            ctx.$pleasure.response = await handler.call(duckRack, ctx.$pleasure[verb === 'get' ? 'get' : 'body'], { state: ctx.$pleasure.state })
           }
         }
       }))
@@ -134,7 +134,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
         if (!doc) {
           return next()
         }
-        ctx.body = doc
+        ctx.$pleasure.response = doc
       },
       output: entity.duckModel.schema
     },
@@ -144,7 +144,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
       // get: pickSchema
       body: updateSchema,
       async handler (ctx) {
-        ctx.body = (await duckRack.update(ctx.params.id, ctx.$pleasure.body, ctx.$pleasure.state))[0]
+        ctx.$pleasure.response = (await duckRack.update(ctx.params.id, ctx.$pleasure.body, ctx.$pleasure.state))[0]
       },
       output: entity.duckModel.schema
     },
@@ -152,7 +152,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
       access: entity.access.delete,
       description: `deletes one ${entity.name} by id`,
       async handler (ctx) {
-        ctx.body = (await duckRack.delete(ctx.params.id, ctx.$pleasure.state))[0]
+        ctx.$pleasure.response = (await duckRack.delete(ctx.params.id, ctx.$pleasure.state))[0]
       },
       output: entity.duckModel.schema
     }
@@ -180,7 +180,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
         },
       },
       async handler (ctx) {
-        ctx.body = await duckRack.list(ctx.$pleasure.get.query, ctx.$pleasure.get.sort)
+        ctx.$pleasure.response = await duckRack.list(ctx.$pleasure.get.query, ctx.$pleasure.get.sort)
       }
     }
   }))
@@ -226,7 +226,7 @@ export async function duckRackToCrudEndpoints (entity, duckRack) {
             const payload = await getPayload()
             const validate = getValidate()
             const applyPayload = { id, _v, path: methodPath, method: methodName, payload, validate, state: ctx.$pleasure.state }
-            ctx.body = (await duckRack.apply(applyPayload)).methodResult
+            ctx.$pleasure.response = (await duckRack.apply(applyPayload)).methodResult
           }
         }
       }

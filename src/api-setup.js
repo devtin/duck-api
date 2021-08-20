@@ -324,10 +324,21 @@ export async function apiSetup ({
   app.use(async (ctx, next) => {
     await next()
     // response
-    if (!ctx.leaveAsIs && ctx.body !== undefined) {
-      ctx.body = {
-        code: 200,
-        data: ctx.body
+    const responseType = ctx.response.type;
+    console.log({ responseType })
+    if (ctx.body === undefined && ctx.$pleasure.response !== undefined) {
+      if (ctx.leaveAsIs) {
+        ctx.body = ctx.$pleasure.response
+      }
+      else {
+        ctx.body = {
+          code: 200,
+          data: ctx.$pleasure.response
+        }
+      }
+
+      if (responseType) {
+        ctx.set('Content-Type', responseType)
       }
     }
   })
