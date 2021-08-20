@@ -42,7 +42,7 @@ const contains = (hash, needle) => {
 
 const requestCanBeHandledByBusboy = (ctx) => {
   const ct = ctx.request.headers['content-type']
-  return contains(ct, 'application/x-www-form-urlencoded') || contains(ct, 'multipart/form-data');
+  return /*contains(ct, 'application/x-www-form-urlencoded') || */contains(ct, 'multipart/form-data');
 }
 
 // todo: replace apiDir (and api concept in general) for gateway

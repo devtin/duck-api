@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.23
+ * duck-api v0.0.24
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -1288,7 +1288,7 @@ const contains = (hash, needle) => {
 
 const requestCanBeHandledByBusboy = (ctx) => {
   const ct = ctx.request.headers['content-type'];
-  return contains(ct, 'application/x-www-form-urlencoded') || contains(ct, 'multipart/form-data');
+  return /*contains(ct, 'application/x-www-form-urlencoded') || */contains(ct, 'multipart/form-data');
 };
 
 // todo: replace apiDir (and api concept in general) for gateway
