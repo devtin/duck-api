@@ -3,17 +3,16 @@
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
-import { Duckfficer, Duck, DuckStorageClass, registerDuckRacksFromDir, registerDuckRacksFromObj } from 'duck-storage';
+import { Duckfficer, Duck, DuckStorageClass, registerDuckRacksFromObj } from 'duck-storage';
 import * as duckStorage from 'duck-storage';
 export { duckStorage as DuckStorage };
-import startCase from 'lodash/startCase.js';
 import pick from 'lodash/pick';
 import path from 'path';
 import { deepScanDir, findPackageJson, packageJson } from '@pleasure-js/utils';
+import { jsDirIntoJson, jsDirIntoJsonSync } from 'js-dir-into-json';
 import Promise$1 from 'bluebird';
 import kebabCase from 'lodash/kebabCase';
-import { jsDirIntoJsonSync, jsDirIntoJson } from 'js-dir-into-json';
-import startCase$1 from 'lodash/startCase';
+import startCase from 'lodash/startCase';
 import { duckfficerMethod } from 'duckfficer-method';
 import Router from 'koa-router';
 import asyncBusboy from 'async-busboy';
@@ -25,15 +24,17 @@ import cleanDeep from 'clean-deep';
 import qs from 'query-string';
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc';
 import fs from 'fs';
-import merge from 'deepmerge';
 import { isPlainObject } from 'is-plain-object';
 import set from 'lodash/set';
 import koaBody from 'koa-body';
+import { pleasureDi } from 'pleasure-di';
+import merge from 'deepmerge';
 import omit from 'lodash/omit';
 import trim from 'lodash/trim';
 import mapValues from 'lodash/mapValues';
 import forEach from 'lodash/forEach';
-import { verify, sign } from 'jsonwebtoken';
+import { sign, verify } from 'jsonwebtoken';
+import cookie from 'cookie';
 
 const statusCodes = {
   200: 'OK',
@@ -332,13 +333,11 @@ const Model = new Schema$3({
 
 /**
  * @typedef {Object} Entity
- * @property {String} file
  * @property {String} path - URL path of the entity
  * @property {Schema|Object} schema
  * @property {Object} methods
  */
 const Entity = new Schema$3({
-  file: String,
   path: String,
   name: String,
   duckModel: Model,
@@ -350,14 +349,12 @@ const Entity = new Schema$3({
   }
 }, {
   cast (v) {
-    if (v && v.file && !v.path) {
-      v.path = (`/` + v.file.replace(/\.js$/, '')).replace(/\/_/g, '/:').replace(/\/index$/, '').replace(/^\/+/, '/');
-    }
-    if (v && v.path && !v.name) {
-      v.name = startCase(v.path.split('/').filter(Boolean)[0]).replace(/[\s]+/, '');
+    if (v.model && !v.duckModel) {
+      v.duckModel = v.model;
     }
     return v
-  }
+  },
+  stripUnknown: true
 });
 
 var index$1 = /*#__PURE__*/Object.freeze({
@@ -558,23 +555,32 @@ async function loadApiCrudDir (dir) {
   })
 }
 
+const prettyPrintError = (error) => {
+  console.log(`  ${error.constructor.name}:`, error.message);
+  console.log(`  - value:`, error.value);
+  console.log(`  - field:`, error.field.fullPath);
+  console.log('');
+};
+
 /**
  * Reads given directory looking for *.js files and parses them into
  * @param dir
  */
+
 async function loadEntitiesFromDir (dir) {
   require = require('esm')(module);  // eslint-disable-line
 
-  const files = await deepScanDir(dir, { only: [/\.js$/] });
-  return Promise$1.map(files, async file => {
-    const entity = require(file).default || require(file);
-    entity.file = path.relative(dir, file);
+  const entities = await jsDirIntoJson(dir);
+
+  return Promise$1.map(Object.entries(entities), async ([entityName, entity]) => {
+    entity.name = entityName;
+    entity.path = `/${entityName}`;
 
     try {
       return await Entity.parse(entity)
     } catch (err) {
-      err.file = path.relative(process.cwd(), file);
-      err.errors.forEach(console.log);
+      err.name = entityName;
+      err.errors.forEach(prettyPrintError);
       throw err
     }
   })
@@ -862,7 +868,7 @@ const grabClassesSync = (classesPath) => {
   });
   return Object.keys(gateways).map(name => {
     return {
-      name: startCase$1(name).replace(/\s+/g, ''),
+      name: startCase(name).replace(/\s+/g, ''),
       methods: gateways[name].methods
     }
   })
@@ -874,7 +880,7 @@ const grabClasses = async (classesPath) => {
   });
   return Object.keys(gateways).map(name => {
     return {
-      name: startCase$1(name).replace(/\s+/g, ''),
+      name: startCase(name).replace(/\s+/g, ''),
       methods: gateways[name].methods
     }
   })
@@ -1299,12 +1305,13 @@ const requestCanBeHandledByBusboy = (ctx) => {
  * @param config.server - The http server returned by app.listen()
  * @param {String} [config.routesDir] - Path to the directory with the js files to load the API from
  * @param {String} [config.servicesDir] - Path to the directory with the js files to load the API from
- * @param {String} [config.racksDir] - Path to the entities directory files to load the duck racks from
+ * @param {String} [config.entitiesDir] - Path to the entities directory files to load the duck domain from
  * @param {String} [config.gatewaysDir] - Path to the gatewyas directory
  * @param {String} [config.servicesPrefix=/] - Prefix of the services router
- * @param {String} [config.racksPrefix=/racks] - Prefix of the racks router
+ * @param {String} [config.domainPrefix=/domain] - Prefix of the domain router
  * @param {String} [config.gatewaysPrefix=/gateways] - Prefix of the entities router
  * @param {String} [config.pluginsDir] - Directory from where to load plugins
+ * @param {Boolean} [config.withSwagger] - Defaults to true when NODE_ENV equals development
  * @param {Object} [options]
  * @param {String[]|Function[]} [options.plugins] - Koa plugins
  * @param {Object} [options.socketIOSettings] - Options for [socket.io]{@link https://socket.io/docs/server-api/}
@@ -1323,24 +1330,70 @@ async function apiSetup ({
   server,
   routesDir,
   servicesDir,
-  racksDir,
+  domainDir,
   gatewaysDir,
-  racksPrefix = '/domain',
+  domainPrefix = '/domain',
   servicesPrefix = '/services',
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
   duckStorage,
   pluginsDir,
+  di,
+  withSwagger = process.env.NODE_ENV === 'development',
 }, { duckStorageSettings, plugins = [], socketIOSettings = {}, customErrorHandling = errorHandling } = {}) {
   const DuckStorage = duckStorage || await new DuckStorageClass(duckStorageSettings);
   const mainRouter = Router();
+
+  const getDependencyInjector = () => {
+    return pleasureDi({
+      Rack (rackName) {
+        const rack = rackName.replace(/Rack$/, '').toLowerCase();
+        return () => DuckStorage.getRackByName(rack)
+      },
+      Service (serviceName) {
+        console.log('requesting', { serviceName });
+      },
+      Gateway (gatewayName) {
+        console.log('requesting', { gatewayName });
+      }
+    })
+  };
+
+  di = di || getDependencyInjector();
+
+  const injector = (cb) => {
+    return (...args) => {
+      return cb()(...args)
+    }
+  };
+
+  const injectMethods = (obj, di) => {
+    Object.entries(obj).forEach(([key, value]) => {
+      if (key !== 'methods' && typeof value === 'object') {
+        obj[key] = injectMethods(value, di);
+      }
+    });
+
+    if (obj.methods) {
+      Object.values(obj.methods).forEach((method) => {
+        const originalHandler = method.handler;
+        method.handler = injector(() => originalHandler(di));
+      });
+    }
+
+    return obj
+  };
+  const jsDirIntoJsonWithDi = async (path, options) => {
+    const obj = await jsDirIntoJson(path, options);
+    return injectMethods(obj, di)
+  };
 
   const servicesRouter = Router({
     prefix: servicesPrefix
   });
 
-  const racksRouter = Router({
-    prefix: racksPrefix
+  const domainRouter = Router({
+    prefix: domainPrefix
   });
 
   const gatewaysRouter = Router({
@@ -1358,8 +1411,10 @@ async function apiSetup ({
   // ctx setup
   app.use((ctx, next) => {
     ctx.leaveAsIs = false;
+    ctx.$io = io;
     ctx.$pleasure = {
       state: {},
+      // todo: check if can be removed
       access () {
         return true
       },
@@ -1410,22 +1465,22 @@ async function apiSetup ({
     return next()
   });
 
-  const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
+  const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJsonWithDi(routesDir, {
     path2dot: convertToDot,
     extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
   })) : [];
 
-  let racks;
-  let racksMethodsAccess;
-  let racksCrudAccess;
-  let racksCrudDelivery;
+  let domain;
+  let domainMethodsAccess;
+  let domainCrudAccess;
+  let domainCrudDelivery;
 
-  if (racksDir && typeof racksDir === 'string') {
+  if (domainDir && typeof domainDir === 'string') {
     const remapKeys = (obj) => {
       const mapKeys = (child) => {
         return {
           ...child,
-          duckModel: child.model
+          duckModel: child.model || child.duckModel
         }
       };
       const dst = {};
@@ -1437,37 +1492,45 @@ async function apiSetup ({
       return dst
     };
 
-    await registerDuckRacksFromDir(DuckStorage, racksDir, remapKeys);
-    racksMethodsAccess = await jsDirIntoJson( racksDir, {
+    await registerDuckRacksFromObj(DuckStorage, remapKeys(await jsDirIntoJsonWithDi(domainDir, {
+      extensions: [
+        '!__tests__',
+        '!*.unit.js',
+        '!lib',
+        '*.js'
+      ],
+
+    })));
+    domainMethodsAccess = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         '!__tests__',
         '!*.unit.js',
         'methods/**/access.js'
       ]
     });
-    racksCrudAccess = await jsDirIntoJson( racksDir, {
+    domainCrudAccess = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         'access.js'
       ]
     });
-    racksCrudDelivery = await jsDirIntoJson( racksDir, {
+    domainCrudDelivery = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         'delivery.js'
       ]
     });
     // todo: create a driver interface
-    racks = DuckStorage.listRacks().map((name) => {
+    domain = DuckStorage.listRacks().map((name) => {
       const duckRack = DuckStorage.getRackByName(name);
       return Object.assign({
-        access: Utils.find(racksCrudAccess, `${name}.access`),
+        access: Utils.find(domainCrudAccess, `${name}.access`),
         },
         duckRack)
     });
-  } else if (typeof racksDir === 'object') {
-    racksMethodsAccess = racksDir;
-    const racksRegistered = await registerDuckRacksFromObj(racksDir);
-    racks = Object.keys(racksRegistered).map(rackName => {
-      return racksRegistered[rackName]
+  } else if (typeof domainDir === 'object') {
+    domainMethodsAccess = domainDir;
+    const domainRegistered = await registerDuckRacksFromObj(DuckStorage, domainDir);
+    domain = Object.keys(domainRegistered).map(rackName => {
+      return domainRegistered[rackName]
     });
   }
 
@@ -1485,44 +1548,53 @@ async function apiSetup ({
     return mappedMethods
   };
 
-  racks = await Promise$1.map(racks, async rack => {
+  console.log(`Promise.map`, { domain });
+
+  domain = await Promise$1.map(domain, async rack => {
     Transformers[`$${rack.name}`] = rack.duckModel.schema;
+    const name = rack.name;
 
     const toMerge = [
       {
-        file: rack.name,
+        name,
+        path: `/${name}`
       },
       pick(rack, Entity.ownPaths),
       {
-        methods: mapMethodAccess(Utils.find(racksMethodsAccess, `${rack.name}.methods`))
+        methods: mapMethodAccess(Utils.find(domainMethodsAccess, `${rack.name}.methods`))
       }
     ];
     const pl = merge.all(toMerge, {
       isMergeableObject: isPlainObject
     });
+
     return Entity.parse(pl)
   });
 
-  const racksEndpoints = flattenDeep(await Promise$1.map(racks, entity => {
+  const domainEndpoints = flattenDeep(await Promise$1.map(domain, entity => {
     return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }));
 
   const gateways = gatewaysDir ? await grabClasses(gatewaysDir) : [];
+
+  console.log(`Promise.map`, { gateways });
   const gatewaysEndpoints = flattenDeep(await Promise$1.map(gateways, gatewayToCrudEndpoints));
 
   const services = servicesDir ? await grabClasses(servicesDir) : [];
+
+  console.log(`Promise.map`, {services});
   const servicesEndpoints = flattenDeep(await Promise$1.map(services, gatewayToCrudEndpoints));
 
   const registeredEntities = {};
 
-  racks.forEach(({ name, duckModel }) => {
+  domain.forEach(({ name, duckModel }) => {
     registeredEntities[kebabCase(name)] = cleanDeep(schemaValidatorToJSON(duckModel.schema, { includeAllSettings: false }));
   });
 
   // return schemas
-  racksRouter.get('/', ctx => {
+  domainRouter.get('/', ctx => {
     // todo: filter per user-permission
-    ctx.body = registeredEntities;
+    ctx.$pleasure.response = registeredEntities;
   });
 
   // event wiring
@@ -1530,7 +1602,7 @@ async function apiSetup ({
   // todo: move to a plugin
   // returns array of rooms
   const getDeliveryDestination = (event, payload) => {
-    const delivery = Utils.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true;
+    const delivery = Utils.find(domainCrudDelivery, `${payload.entityName}.delivery`) || true;
 
     const processOutput = (output) => {
       return typeof output === 'boolean' ? output : castArray(delivery)
@@ -1571,15 +1643,15 @@ async function apiSetup ({
     await next();
     // response
     const responseType = ctx.response.type;
-    console.log({ responseType });
-    if (ctx.body === undefined && ctx.$pleasure.response !== undefined) {
+    if (ctx.body === undefined) {
       if (ctx.leaveAsIs) {
         ctx.body = ctx.$pleasure.response;
       }
       else {
+        const data = ctx.$pleasure.response || {};
         ctx.body = {
           code: 200,
-          data: ctx.$pleasure.response
+          data,
         };
       }
 
@@ -1590,7 +1662,7 @@ async function apiSetup ({
   });
 
   servicesEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, servicesRouter));
-  racksEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, racksRouter));
+  domainEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, domainRouter));
   gatewaysEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, gatewaysRouter));
   pluginsEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, pluginsRouter));
   routesEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, mainRouter));
@@ -1634,15 +1706,15 @@ async function apiSetup ({
     }
   };
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (withSwagger) {
     const swaggerHtml = fs.readFileSync(path.join(findPackageJson(__dirname), '../src/lib/fixtures/swagger.html')).toString();
 
     const servicesSwagger = JSON.stringify(await endpointsToSwagger(servicesEndpoints, {
       prefix: servicesPrefix
     }), null, 2);
 
-    const racksSwagger = JSON.stringify(await endpointsToSwagger(racksEndpoints, {
-      prefix: racksPrefix
+    const domainSwagger = JSON.stringify(await endpointsToSwagger(domainEndpoints, {
+      prefix: domainPrefix
     }), null, 2);
 
     const gatewaysSwagger = JSON.stringify(await endpointsToSwagger(gatewaysEndpoints, {
@@ -1663,11 +1735,11 @@ async function apiSetup ({
       ctx.body = swaggerHtml;
     });
 
-    racksRouter.get('/swagger.json', async (ctx) => {
+    domainRouter.get('/swagger.json', async (ctx) => {
       ctx.leaveAsIs = true;
-      ctx.body = racksSwagger;
+      ctx.body = domainSwagger;
     });
-    racksRouter.get('/docs', async (ctx) => {
+    domainRouter.get('/docs', async (ctx) => {
       ctx.leaveAsIs = true;
       ctx.body = swaggerHtml;
     });
@@ -1699,8 +1771,8 @@ async function apiSetup ({
   app.use(servicesRouter.routes());
   app.use(servicesRouter.allowedMethods());
 
-  app.use(racksRouter.routes());
-  app.use(racksRouter.allowedMethods());
+  app.use(domainRouter.routes());
+  app.use(domainRouter.allowedMethods());
 
   app.use(gatewaysRouter.routes());
   app.use(gatewaysRouter.allowedMethods());
@@ -1713,93 +1785,143 @@ async function apiSetup ({
     throw new ApiError(404)
   });
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
+  return { io, mainRouter, servicesRouter, domainRouter, routesEndpoints, servicesEndpoints, domainEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
 }
 
 /**
- * @typedef {Object} Authorization
- * @property {Object} user
- * @property {Number} [expiration]
- * @property {String} [algorithm]
- */
-
-/**
- * @typedef {Function} Authorizer
- * @param {Object} payload - Given payload (matched by given schema body, if any)
- * @return {Authorization|void}
- */
-
-/**
- * @param {String} jwtKey - SSL private key to issue JWT
- * @param {Authorizer} authorizer
  * @param {Object} options
- * @param {String} [options.jwt.headerName=authorization]
- * @param {String} [options.jwt.cookieName=accessToken]
- * @param {Schema|Boolean} [options.jwt.body=true]
- * @param {String} [options.jwt.algorithm=HS256]
- * @param {String} [options.jwt.expiresIn=15 * 60]
- * @emits {Object} created - When a token has been issued
- * @emits {Object} created - When a token has been issued
- * @return {ApiPlugin}
- *
- * @example
- * // pleasure.config.js
- * {
- *   plugins: [
- *     jwtAccess(jwtKey, authorizer, { jwt: { body: true, algorithm: 'HS256', expiryIn: 15 * 60 * 60 } })
- *   ]
- * }
+ * @param {String} options.privateKey
+ * @param {String} [options.headerName=authorization]
+ * @param {String} [options.cookieName=accessToken]
+ * @param {String} [options.algorithm=HS256] - see https://www.npmjs.com/package/jsonwebtoken#jwtverifytoken-secretorpublickey-options-callback
+ * @param {Number|String} [options.expiresIn=15 * 60]
+ * @return {Function}
  */
 function jwtAccess ({
   cookieName = 'accessToken',
   headerName = 'authorization',
+  privateKey,
   algorithm = 'HS256',
-  expiresIn = 15 * 60, // 15 minutes
-  body = true,
-  jwtKey,
-  auth: {
-
-  },
-  authPath = 'auth',
-  revokePath = 'revoke',
-  authorize,
-  serializer // async function that receives a payload and returns the payload that needs to be serialized
+  expiresIn = '15m', // 15 minutes
+  deliveryGroup = () => false
 } = {}) {
-  return function ({ router, app, server, io, pls }) {
-    /**
-     *
-     */
-    router.use(async (ctx, next) => {
-      // two tokens passed (cookie + header) and are distinct => throw
-      // token is invalid / expired => throw
-      const cookieToken = ctx.cookies.get(cookieName);
-      const headerToken = (ctx.request.headers[headerName] || '').replace(/^Bearer /i, '');
+  return function ({ app, io }) {
+    const isValid = (token) => {
+      try {
+        const user = verify(token, privateKey);
+        return (user.exp * 1000) > Date.now() ? user : false
+      } catch (err) {
+        return false
+      }
+    };
 
-      if (cookieToken && headerToken && cookieToken !== headerToken) {
-        throw new ApiError(400, `Bad request`)
+    const validateToken = (token) => {
+      const user = isValid(token);
+
+      if (!user) {
+        throw new Error('Invalid token')
       }
 
-      const token = headerToken || cookieToken;
+      return user
+    };
+
+    const getTokenFromHeaders = (headers) => {
+      const auth = headers[headerName] || '';
+      if (/^Bearer /.test(auth)) {
+        return auth.replace(/^Bearer[\s]+(.*)$/, '$1')
+      }
+    };
+
+    const getTokenFromCookies = (cookies) => {
+      return cookie.parse(cookies || '')[cookieName]
+    };
+
+    app.use((ctx, next) => {
+      ctx.$pleasure.session = {
+        // todo: introduce proper options
+        authorize (userData, {
+          signIn = true,
+          tokenSignOptions = {},
+          refreshTokenSignOptions = {}
+        } = {}) {
+          const accessToken = sign(userData, privateKey, {
+            algorithm,
+            expiresIn,
+            ...tokenSignOptions
+          });
+
+          // todo: make valid refreshToken
+          const refreshToken = sign(userData, privateKey, {
+            algorithm,
+            expiresIn,
+            ...refreshTokenSignOptions
+          });
+
+          if (signIn) {
+            ctx.cookies.set(cookieName, accessToken);
+            ctx.$pleasure.user = ctx.$pleasure.state.user = isValid(accessToken);
+          }
+
+          return {
+            accessToken,
+            refreshToken
+          }
+        },
+        destroy () {
+          // todo: maybe introduce async fn for optional callback
+          ctx.cookies.set(cookieName, null);
+          ctx.$pleasure.user = ctx.$pleasure.state.user = null;
+        },
+        get user () {
+          return ctx.$pleasure.user
+        },
+        isValid
+      };
+      return next()
+    });
+
+    app.use((ctx, next) => {
+      const getToken = () => {
+        return getTokenFromHeaders(ctx.req.headers) || ctx.cookies.get(cookieName)
+      };
+
+      const token = getToken();
+
       if (token) {
-        try {
-          ctx.$pleasure.user = verify(token, jwtKey);
-        } catch (err) {
-          throw new ApiError(401, `Unauthorized`)
+        const user = isValid(token);
+
+        if (!user) {
+          ctx.$pleasure.session.destroy();
+          throw new Error('Invalid token')
         }
+
+        ctx.$pleasure.user = user;
+        ctx.$pleasure.state.user = user;
       }
 
       return next()
     });
 
-    return [
-      {
-        path: authPath,
-        description: 'exchanges credentials for access and refresh tokens',
-        async create (ctx) {
-          await sign(await authorizer(ctx));
+    io.use((socket, next) => {
+      const accessToken = getTokenFromHeaders(socket.request.headers) || getTokenFromCookies(socket.request.headers.cookie);
+      let user;
+
+      if (accessToken) {
+        try {
+          user = validateToken(accessToken);
+        } catch (err) {
+          return next(err)
         }
       }
-    ]
+
+      const group = deliveryGroup(user);
+
+      if (group) {
+        socket.join(group);
+      }
+
+      return next()
+    });
   }
 }
 

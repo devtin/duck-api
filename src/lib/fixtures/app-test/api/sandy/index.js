@@ -13,7 +13,7 @@ export default {
         }
       }
     },
-    handler (ctx) {
+    handler: () => (ctx) => {
       ctx.body = `Amazing ${ ctx.$pleasure.get.q || '' }`
     }
   }

@@ -1,5 +1,5 @@
 export default {
-  duckModel: {
+  model: {
     schema: {
       name: String
     },
@@ -7,13 +7,13 @@ export default {
       // POST => /user/:id/clean
       clean: {
         description: 'cleans user',
-        handler (doc) {
+        handler: () => (doc) => {
           return `Just cleaned ${ doc._id } / ${ doc.name }`
         }
       },
       touch: {
         description: 'touches user',
-        handler  (doc, { ctx, entity }) {
+        handler: () => (doc, { ctx, entity }) => {
           return ctx.$pleasure.dbDriver.updateEntry(entity.name, doc._id, {
             accessed: Date.now()
           })
@@ -32,7 +32,7 @@ export default {
     // default enable by post
     findPapo: {
       description: 'reads papo',
-      handler (ctx) {
+      handler: () => (ctx) => {
         ctx.body = 'hey-yo sandy qué pasó guasap?'
       }
     }

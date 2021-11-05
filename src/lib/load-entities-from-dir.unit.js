@@ -4,6 +4,6 @@ import path from 'path'
 
 test(`Load entities from directory`, async t => {
   const entities = await loadEntitiesFromDir(path.join(__dirname, './fixtures/app-test/entities'))
-  t.is(entities.length, 1)
+  t.is(entities.length, 2)
   t.truthy(typeof entities[0].duckModel.clean)
 })

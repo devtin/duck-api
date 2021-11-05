@@ -1,5 +1,3 @@
-import { CRUD } from './crud.js'
-import startCase from 'lodash/startCase.js'
 import { Access } from './access.js'
 import { isNotNullObj } from '../is-not-null-obj'
 import { Duckfficer, Duck } from 'duck-storage'
@@ -56,13 +54,11 @@ const Model = new Schema({
 
 /**
  * @typedef {Object} Entity
- * @property {String} file
  * @property {String} path - URL path of the entity
  * @property {Schema|Object} schema
  * @property {Object} methods
  */
 export const Entity = new Schema({
-  file: String,
   path: String,
   name: String,
   duckModel: Model,
@@ -74,12 +70,10 @@ export const Entity = new Schema({
   }
 }, {
   cast (v) {
-    if (v && v.file && !v.path) {
-      v.path = (`/` + v.file.replace(/\.js$/, '')).replace(/\/_/g, '/:').replace(/\/index$/, '').replace(/^\/+/, '/')
-    }
-    if (v && v.path && !v.name) {
-      v.name = startCase(v.path.split('/').filter(Boolean)[0]).replace(/[\s]+/, '')
+    if (v.model && !v.duckModel) {
+      v.duckModel = v.model
     }
     return v
-  }
+  },
+  stripUnknown: true
 })

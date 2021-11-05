@@ -1,25 +1,33 @@
-import { deepScanDir } from '@pleasure-js/utils'
+import { jsDirIntoJson } from 'js-dir-into-json'
 import { Entity } from './schema'
-import path from 'path'
 import Promise from 'bluebird'
+
+const prettyPrintError = (error) => {
+  console.log(`  ${error.constructor.name}:`, error.message);
+  console.log(`  - value:`, error.value)
+  console.log(`  - field:`, error.field.fullPath)
+  console.log('')
+}
 
 /**
  * Reads given directory looking for *.js files and parses them into
  * @param dir
  */
+
 export async function loadEntitiesFromDir (dir) {
   require = require('esm')(module)  // eslint-disable-line
 
-  const files = await deepScanDir(dir, { only: [/\.js$/] })
-  return Promise.map(files, async file => {
-    const entity = require(file).default || require(file)
-    entity.file = path.relative(dir, file)
+  const entities = await jsDirIntoJson(dir)
+
+  return Promise.map(Object.entries(entities), async ([entityName, entity]) => {
+    entity.name = entityName
+    entity.path = `/${entityName}`
 
     try {
       return await Entity.parse(entity)
     } catch (err) {
-      err.file = path.relative(process.cwd(), file)
-      err.errors.forEach(console.log)
+      err.name = entityName
+      err.errors.forEach(prettyPrintError)
       throw err
     }
   })

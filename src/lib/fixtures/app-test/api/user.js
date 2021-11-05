@@ -1,7 +1,7 @@
 export default {
   create: {
     description: 'creates user',
-    handler (ctx) {
+    handler: () => (ctx) => {
       ctx.body = 'ñaca'
     }
   },
@@ -10,7 +10,7 @@ export default {
     get: {
       name: String
     },
-    async handler (ctx) {
+    handler: () => async (ctx) => {
       ctx.body = ctx.$pleasure || { done: true }
     }
   }

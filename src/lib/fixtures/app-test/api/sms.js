@@ -9,7 +9,7 @@ export default {
       name: String,
       created: Date
     },
-    handler (ctx) {
+    handler: () => (ctx) => {
       ctx.body = ctx.$pleasure
     }
   }

@@ -12,7 +12,8 @@ let entityDriver
 test.before(async () => {
   DuckStorage = await new DuckStorageClass()
   anEntity = await Entity.parse({
-    file: '/papo.js',
+    name: 'papo',
+    path: '/papo',
     duckModel: {
       schema: {
         name: String

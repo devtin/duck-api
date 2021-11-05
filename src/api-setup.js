@@ -6,7 +6,7 @@ import flattenDeep from 'lodash/flattenDeep'
 import kebabCase from 'lodash/kebabCase'
 import castArray from 'lodash/castArray'
 import cleanDeep from 'clean-deep'
-import { DuckStorageClass, registerDuckRacksFromDir, Duckfficer } from 'duck-storage'
+import { DuckStorageClass, registerDuckRacksFromObj, Duckfficer } from 'duck-storage'
 import Promise from 'bluebird'
 import qs from 'query-string'
 import { jsDirIntoJson } from 'js-dir-into-json'
@@ -14,12 +14,12 @@ import pick from 'lodash/pick'
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc'
 import fs from 'fs'
 import path from 'path'
-import { registerDuckRacksFromObj } from 'duck-storage'
-import merge from 'deepmerge'
 import { isPlainObject } from 'is-plain-object'
 import { packageJson, findPackageJson } from '@pleasure-js/utils'
 import set from 'lodash/set'
 import koaBody from 'koa-body'
+import { pleasureDi } from 'pleasure-di'
+import merge from 'deepmerge'
 
 import { ApiError } from './lib/api-error.js'
 import { crudEndpointIntoRouter } from './lib/crud-endpoint-into-router.js'
@@ -53,12 +53,13 @@ const requestCanBeHandledByBusboy = (ctx) => {
  * @param config.server - The http server returned by app.listen()
  * @param {String} [config.routesDir] - Path to the directory with the js files to load the API from
  * @param {String} [config.servicesDir] - Path to the directory with the js files to load the API from
- * @param {String} [config.racksDir] - Path to the entities directory files to load the duck racks from
+ * @param {String} [config.entitiesDir] - Path to the entities directory files to load the duck domain from
  * @param {String} [config.gatewaysDir] - Path to the gatewyas directory
  * @param {String} [config.servicesPrefix=/] - Prefix of the services router
- * @param {String} [config.racksPrefix=/racks] - Prefix of the racks router
+ * @param {String} [config.domainPrefix=/domain] - Prefix of the domain router
  * @param {String} [config.gatewaysPrefix=/gateways] - Prefix of the entities router
  * @param {String} [config.pluginsDir] - Directory from where to load plugins
+ * @param {Boolean} [config.withSwagger] - Defaults to true when NODE_ENV equals development
  * @param {Object} [options]
  * @param {String[]|Function[]} [options.plugins] - Koa plugins
  * @param {Object} [options.socketIOSettings] - Options for [socket.io]{@link https://socket.io/docs/server-api/}
@@ -77,24 +78,70 @@ export async function apiSetup ({
   server,
   routesDir,
   servicesDir,
-  racksDir,
+  domainDir,
   gatewaysDir,
-  racksPrefix = '/domain',
+  domainPrefix = '/domain',
   servicesPrefix = '/services',
   gatewaysPrefix = '/gateways',
   pluginsPrefix = '/plugins',
   duckStorage,
   pluginsDir,
+  di,
+  withSwagger = process.env.NODE_ENV === 'development',
 }, { duckStorageSettings, plugins = [], socketIOSettings = {}, customErrorHandling = errorHandling } = {}) {
   const DuckStorage = duckStorage || await new DuckStorageClass(duckStorageSettings)
   const mainRouter = Router()
+
+  const getDependencyInjector = () => {
+    return pleasureDi({
+      Rack (rackName) {
+        const rack = rackName.replace(/Rack$/, '').toLowerCase()
+        return () => DuckStorage.getRackByName(rack)
+      },
+      Service (serviceName) {
+        console.log('requesting', { serviceName })
+      },
+      Gateway (gatewayName) {
+        console.log('requesting', { gatewayName })
+      }
+    })
+  }
+
+  di = di || getDependencyInjector()
+
+  const injector = (cb) => {
+    return (...args) => {
+      return cb()(...args)
+    }
+  }
+
+  const injectMethods = (obj, di) => {
+    Object.entries(obj).forEach(([key, value]) => {
+      if (key !== 'methods' && typeof value === 'object') {
+        obj[key] = injectMethods(value, di)
+      }
+    })
+
+    if (obj.methods) {
+      Object.values(obj.methods).forEach((method) => {
+        const originalHandler = method.handler;
+        method.handler = injector(() => originalHandler(di))
+      })
+    }
+
+    return obj
+  }
+  const jsDirIntoJsonWithDi = async (path, options) => {
+    const obj = await jsDirIntoJson(path, options)
+    return injectMethods(obj, di)
+  }
 
   const servicesRouter = Router({
     prefix: servicesPrefix
   })
 
-  const racksRouter = Router({
-    prefix: racksPrefix
+  const domainRouter = Router({
+    prefix: domainPrefix
   })
 
   const gatewaysRouter = Router({
@@ -112,8 +159,10 @@ export async function apiSetup ({
   // ctx setup
   app.use((ctx, next) => {
     ctx.leaveAsIs = false
+    ctx.$io = io
     ctx.$pleasure = {
       state: {},
+      // todo: check if can be removed
       access () {
         return true
       },
@@ -164,22 +213,22 @@ export async function apiSetup ({
     return next()
   })
 
-  const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJson(routesDir, {
+  const routesEndpoints = routesDir ? await routeToCrudEndpoints(await jsDirIntoJsonWithDi(routesDir, {
     path2dot: convertToDot,
     extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
   })) : []
 
-  let racks
-  let racksMethodsAccess
-  let racksCrudAccess
-  let racksCrudDelivery
+  let domain
+  let domainMethodsAccess
+  let domainCrudAccess
+  let domainCrudDelivery
 
-  if (racksDir && typeof racksDir === 'string') {
+  if (domainDir && typeof domainDir === 'string') {
     const remapKeys = (obj) => {
       const mapKeys = (child) => {
         return {
           ...child,
-          duckModel: child.model
+          duckModel: child.model || child.duckModel
         }
       }
       const dst = {}
@@ -191,37 +240,45 @@ export async function apiSetup ({
       return dst
     }
 
-    await registerDuckRacksFromDir(DuckStorage, racksDir, remapKeys)
-    racksMethodsAccess = await jsDirIntoJson( racksDir, {
+    await registerDuckRacksFromObj(DuckStorage, remapKeys(await jsDirIntoJsonWithDi(domainDir, {
+      extensions: [
+        '!__tests__',
+        '!*.unit.js',
+        '!lib',
+        '*.js'
+      ],
+
+    })))
+    domainMethodsAccess = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         '!__tests__',
         '!*.unit.js',
         'methods/**/access.js'
       ]
     })
-    racksCrudAccess = await jsDirIntoJson( racksDir, {
+    domainCrudAccess = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         'access.js'
       ]
     })
-    racksCrudDelivery = await jsDirIntoJson( racksDir, {
+    domainCrudDelivery = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         'delivery.js'
       ]
     })
     // todo: create a driver interface
-    racks = DuckStorage.listRacks().map((name) => {
+    domain = DuckStorage.listRacks().map((name) => {
       const duckRack = DuckStorage.getRackByName(name)
       return Object.assign({
-        access: Utils.find(racksCrudAccess, `${name}.access`),
+        access: Utils.find(domainCrudAccess, `${name}.access`),
         },
         duckRack)
     })
-  } else if (typeof racksDir === 'object') {
-    racksMethodsAccess = racksDir
-    const racksRegistered = await registerDuckRacksFromObj(racksDir)
-    racks = Object.keys(racksRegistered).map(rackName => {
-      return racksRegistered[rackName]
+  } else if (typeof domainDir === 'object') {
+    domainMethodsAccess = domainDir
+    const domainRegistered = await registerDuckRacksFromObj(DuckStorage, domainDir)
+    domain = Object.keys(domainRegistered).map(rackName => {
+      return domainRegistered[rackName]
     })
   }
 
@@ -239,44 +296,53 @@ export async function apiSetup ({
     return mappedMethods
   }
 
-  racks = await Promise.map(racks, async rack => {
+  console.log(`Promise.map`, { domain })
+
+  domain = await Promise.map(domain, async rack => {
     Transformers[`$${rack.name}`] = rack.duckModel.schema
+    const name = rack.name
 
     const toMerge = [
       {
-        file: rack.name,
+        name,
+        path: `/${name}`
       },
       pick(rack, Entity.ownPaths),
       {
-        methods: mapMethodAccess(Utils.find(racksMethodsAccess, `${rack.name}.methods`))
+        methods: mapMethodAccess(Utils.find(domainMethodsAccess, `${rack.name}.methods`))
       }
     ]
     const pl = merge.all(toMerge, {
       isMergeableObject: isPlainObject
     })
+
     return Entity.parse(pl)
   })
 
-  const racksEndpoints = flattenDeep(await Promise.map(racks, entity => {
+  const domainEndpoints = flattenDeep(await Promise.map(domain, entity => {
     return duckRackToCrudEndpoints(entity, DuckStorage.getRackByName(entity.name))
   }))
 
   const gateways = gatewaysDir ? await grabClasses(gatewaysDir) : []
+
+  console.log(`Promise.map`, { gateways })
   const gatewaysEndpoints = flattenDeep(await Promise.map(gateways, gatewayToCrudEndpoints))
 
   const services = servicesDir ? await grabClasses(servicesDir) : []
+
+  console.log(`Promise.map`, {services})
   const servicesEndpoints = flattenDeep(await Promise.map(services, gatewayToCrudEndpoints))
 
   const registeredEntities = {}
 
-  racks.forEach(({ name, duckModel }) => {
+  domain.forEach(({ name, duckModel }) => {
     registeredEntities[kebabCase(name)] = cleanDeep(schemaValidatorToJSON(duckModel.schema, { includeAllSettings: false }))
   })
 
   // return schemas
-  racksRouter.get('/', ctx => {
+  domainRouter.get('/', ctx => {
     // todo: filter per user-permission
-    ctx.body = registeredEntities
+    ctx.$pleasure.response = registeredEntities
   })
 
   // event wiring
@@ -284,7 +350,7 @@ export async function apiSetup ({
   // todo: move to a plugin
   // returns array of rooms
   const getDeliveryDestination = (event, payload) => {
-    const delivery = Utils.find(racksCrudDelivery, `${payload.entityName}.delivery`) || true
+    const delivery = Utils.find(domainCrudDelivery, `${payload.entityName}.delivery`) || true
 
     const processOutput = (output) => {
       return typeof output === 'boolean' ? output : castArray(delivery)
@@ -325,15 +391,15 @@ export async function apiSetup ({
     await next()
     // response
     const responseType = ctx.response.type;
-    console.log({ responseType })
-    if (ctx.body === undefined && ctx.$pleasure.response !== undefined) {
+    if (ctx.body === undefined) {
       if (ctx.leaveAsIs) {
         ctx.body = ctx.$pleasure.response
       }
       else {
+        const data = ctx.$pleasure.response || {}
         ctx.body = {
           code: 200,
-          data: ctx.$pleasure.response
+          data,
         }
       }
 
@@ -344,7 +410,7 @@ export async function apiSetup ({
   })
 
   servicesEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, servicesRouter))
-  racksEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, racksRouter))
+  domainEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, domainRouter))
   gatewaysEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, gatewaysRouter))
   pluginsEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, pluginsRouter))
   routesEndpoints.forEach(crudEndpointIntoRouter.bind(undefined, mainRouter))
@@ -388,15 +454,15 @@ export async function apiSetup ({
     }
   }
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (withSwagger) {
     const swaggerHtml = fs.readFileSync(path.join(findPackageJson(__dirname), '../src/lib/fixtures/swagger.html')).toString()
 
     const servicesSwagger = JSON.stringify(await endpointsToSwagger(servicesEndpoints, {
       prefix: servicesPrefix
     }), null, 2)
 
-    const racksSwagger = JSON.stringify(await endpointsToSwagger(racksEndpoints, {
-      prefix: racksPrefix
+    const domainSwagger = JSON.stringify(await endpointsToSwagger(domainEndpoints, {
+      prefix: domainPrefix
     }), null, 2)
 
     const gatewaysSwagger = JSON.stringify(await endpointsToSwagger(gatewaysEndpoints, {
@@ -417,11 +483,11 @@ export async function apiSetup ({
       ctx.body = swaggerHtml
     })
 
-    racksRouter.get('/swagger.json', async (ctx) => {
+    domainRouter.get('/swagger.json', async (ctx) => {
       ctx.leaveAsIs = true
-      ctx.body = racksSwagger
+      ctx.body = domainSwagger
     })
-    racksRouter.get('/docs', async (ctx) => {
+    domainRouter.get('/docs', async (ctx) => {
       ctx.leaveAsIs = true
       ctx.body = swaggerHtml
     })
@@ -453,8 +519,8 @@ export async function apiSetup ({
   app.use(servicesRouter.routes())
   app.use(servicesRouter.allowedMethods())
 
-  app.use(racksRouter.routes())
-  app.use(racksRouter.allowedMethods())
+  app.use(domainRouter.routes())
+  app.use(domainRouter.allowedMethods())
 
   app.use(gatewaysRouter.routes())
   app.use(gatewaysRouter.allowedMethods())
@@ -467,5 +533,5 @@ export async function apiSetup ({
     throw new ApiError(404)
   })
 
-  return { io, mainRouter, servicesRouter, racksRouter, routesEndpoints, servicesEndpoints, racksEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
+  return { io, mainRouter, servicesRouter, domainRouter, routesEndpoints, servicesEndpoints, domainEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
 }
