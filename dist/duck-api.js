@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.26
+ * duck-api v0.0.28
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -1835,7 +1835,7 @@ async function apiSetup ({
     throw new ApiError(404)
   });
 
-  return { io, mainRouter, servicesRouter, domainRouter, routesEndpoints, servicesEndpoints, domainEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services) }
+  return { io, mainRouter, servicesRouter, domainRouter, routesEndpoints, servicesEndpoints, domainEndpoints, gatewaysRouter, pluginsRouter, DuckStorage, gateways: classesToObj(gateways), services: classesToObj(services), di }
 }
 
 /**
