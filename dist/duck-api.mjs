@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.25
+ * duck-api v0.0.26
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -1460,6 +1460,8 @@ async function apiSetup ({
       } else {
         ctx.$pleasure.body = ctx.request.body;
       }
+
+      console.log(ctx.$pleasure.body);
     }
 
     return next()

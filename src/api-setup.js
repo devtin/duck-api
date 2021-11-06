@@ -208,6 +208,8 @@ export async function apiSetup ({
       } else {
         ctx.$pleasure.body = ctx.request.body
       }
+
+      console.log(ctx.$pleasure.body)
     }
 
     return next()
