@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.28
+ * duck-api v0.0.30
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -501,7 +501,7 @@ const crudToMethod = {
   delete: 'delete'
 };
 
-const methodToCrud = (() => {
+const methodToCrud$1 = (() => {
   const invertedObject = {};
   Object.keys(crudToMethod).forEach(key => {
     invertedObject[crudToMethod[key]] = key;
@@ -690,7 +690,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
 
       crudEndpoints.push(await CRUDEndpoint.parse({
         path: thePath,
-        [methodToCrud[verb]]: {
+        [methodToCrud$1[verb]]: {
           access,
           description,
           get: verb === 'get' ? input : undefined,
@@ -777,7 +777,7 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
       const methodPath = dotPath2Path(parentPath);
       const crudEndpointPayload = {
         path: `${ entity.path }/:id/${methodPath}${ parentPath ? '/' : ''}${ kebabCase(methodName) }`,
-        [methodToCrud[method.verb || 'post']]: {
+        [methodToCrud$1[method.verb || 'post']]: {
           example: method.example,
           description: method.description || `method ${methodName}`,
           get: {
@@ -919,6 +919,13 @@ async function routeToCrudEndpoints (routeTree = {}, parentPath = []) {
   })
 }
 
+const methodToCrud = {
+  post: 'create',
+  get: 'read',
+  patch: 'update',
+  delete: 'delete'
+};
+
 function gatewayToCrudEndpoints(client) {
   return Promise$1.map(Object.keys(client.methods), async methodName => {
     const method = client.methods[methodName];
@@ -926,7 +933,7 @@ function gatewayToCrudEndpoints(client) {
 
     return CRUDEndpoint.parse({
       path: `/${kebabCase(client.name)}/${methodName}`,
-      create: {
+      [methodToCrud[method.verb || 'post']]: {
         description: method.description,
         body: method.input,
         output: method.output,
@@ -1286,6 +1293,15 @@ function convertToDot (dirPath) {
   }).join('.')
 }
 
+const jsDirIntoJsonIfExists = async (...args) => {
+  try {
+    return await jsDirIntoJson(...args)
+  }
+  catch (err) {
+    return []
+  }
+};
+
 const { Utils, Transformers } = Duckfficer;
 
 const contains = (hash, needle) => {
@@ -1339,6 +1355,7 @@ async function apiSetup ({
   duckStorage,
   pluginsDir,
   di,
+  customDiResolvers = {},
   withSwagger = process.env.NODE_ENV === 'development',
 }, { duckStorageSettings, plugins = [], socketIOSettings = {}, customErrorHandling = errorHandling } = {}) {
   const DuckStorage = duckStorage || await new DuckStorageClass(duckStorageSettings);
@@ -1355,7 +1372,8 @@ async function apiSetup ({
       },
       Gateway (gatewayName) {
         console.log('requesting', { gatewayName });
-      }
+      },
+      ...customDiResolvers
     })
   };
 
@@ -1384,7 +1402,7 @@ async function apiSetup ({
     return obj
   };
   const jsDirIntoJsonWithDi = async (path, options) => {
-    const obj = await jsDirIntoJson(path, options);
+    const obj = await jsDirIntoJsonIfExists(path, options);
     return injectMethods(obj, di)
   };
 

@@ -2,6 +2,13 @@ import kebabCase from 'lodash/kebabCase'
 import { CRUDEndpoint } from './schema'
 import Promise from 'bluebird'
 
+export const methodToCrud = {
+  post: 'create',
+  get: 'read',
+  patch: 'update',
+  delete: 'delete'
+}
+
 export function gatewayToCrudEndpoints(client) {
   return Promise.map(Object.keys(client.methods), async methodName => {
     const method = client.methods[methodName]
@@ -9,7 +16,7 @@ export function gatewayToCrudEndpoints(client) {
 
     return CRUDEndpoint.parse({
       path: `/${kebabCase(client.name)}/${methodName}`,
-      create: {
+      [methodToCrud[method.verb || 'post']]: {
         description: method.description,
         body: method.input,
         output: method.output,

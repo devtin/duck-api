@@ -34,6 +34,15 @@ import { convertToDot } from './lib/utils/convert-to-dot'
 import { grabClasses } from './lib/grab-classes.js'
 import { classesToObj } from './lib/grab-classes-sync.js'
 
+const jsDirIntoJsonIfExists = async (...args) => {
+  try {
+    return await jsDirIntoJson(...args)
+  }
+  catch (err) {
+    return []
+  }
+}
+
 const { Utils, Transformers } = Duckfficer
 
 const contains = (hash, needle) => {
@@ -87,6 +96,7 @@ export async function apiSetup ({
   duckStorage,
   pluginsDir,
   di,
+  customDiResolvers = {},
   withSwagger = process.env.NODE_ENV === 'development',
 }, { duckStorageSettings, plugins = [], socketIOSettings = {}, customErrorHandling = errorHandling } = {}) {
   const DuckStorage = duckStorage || await new DuckStorageClass(duckStorageSettings)
@@ -103,7 +113,8 @@ export async function apiSetup ({
       },
       Gateway (gatewayName) {
         console.log('requesting', { gatewayName })
-      }
+      },
+      ...customDiResolvers
     })
   }
 
@@ -132,7 +143,7 @@ export async function apiSetup ({
     return obj
   }
   const jsDirIntoJsonWithDi = async (path, options) => {
-    const obj = await jsDirIntoJson(path, options)
+    const obj = await jsDirIntoJsonIfExists(path, options)
     return injectMethods(obj, di)
   }
 
