@@ -1,6 +1,6 @@
-import { jsDirIntoJsonSync } from 'js-dir-into-json'
 import startCase from 'lodash/startCase'
 import { duckfficerMethod } from 'duckfficer-method'
+import { jsDirIntoJsonIfExistsSync } from './utils/js-dir-into-json-if-exists.js'
 
 export const methodsToDuckfficer = (methods) => {
   const methodsObj = {}
@@ -29,7 +29,7 @@ export const classesToObj = (classesArray) => {
 }
 
 export const grabClassesSync = (classesPath) => {
-  const gateways = jsDirIntoJsonSync(classesPath, {
+  const gateways = jsDirIntoJsonIfExistsSync(classesPath, {
     extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
   })
   return Object.keys(gateways).map(name => {

@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.30
+ * duck-api v0.0.31
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -836,6 +836,24 @@ async function duckRackToCrudEndpoints (entity, duckRack) {
   return crudEndpoints
 }
 
+const jsDirIntoJsonIfExists = async (...args) => {
+  try {
+    return await jsDirIntoJson(...args)
+  }
+  catch (err) {
+    return []
+  }
+};
+
+const jsDirIntoJsonIfExistsSync = (...args) => {
+  try {
+    return jsDirIntoJsonSync(...args)
+  }
+  catch (err) {
+    return []
+  }
+};
+
 const methodsToDuckfficer = (methods) => {
   const methodsObj = {};
 
@@ -863,7 +881,7 @@ const classesToObj = (classesArray) => {
 };
 
 const grabClassesSync = (classesPath) => {
-  const gateways = jsDirIntoJsonSync(classesPath, {
+  const gateways = jsDirIntoJsonIfExistsSync(classesPath, {
     extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
   });
   return Object.keys(gateways).map(name => {
@@ -875,7 +893,7 @@ const grabClassesSync = (classesPath) => {
 };
 
 const grabClasses = async (classesPath) => {
-  const gateways = await jsDirIntoJson(classesPath, {
+  const gateways = await jsDirIntoJsonIfExists(classesPath, {
     extensions: ['!lib', '!__tests__', '!*.unit.js', '!*.spec.js', '!*.test.js', '*.js', '*.mjs']
   });
   return Object.keys(gateways).map(name => {
@@ -1293,15 +1311,6 @@ function convertToDot (dirPath) {
   }).join('.')
 }
 
-const jsDirIntoJsonIfExists = async (...args) => {
-  try {
-    return await jsDirIntoJson(...args)
-  }
-  catch (err) {
-    return []
-  }
-};
-
 const { Utils, Transformers } = Duckfficer;
 
 const contains = (hash, needle) => {
@@ -1478,8 +1487,6 @@ async function apiSetup ({
       } else {
         ctx.$pleasure.body = ctx.request.body;
       }
-
-      console.log(ctx.$pleasure.body);
     }
 
     return next()
@@ -1512,15 +1519,15 @@ async function apiSetup ({
       return dst
     };
 
-    await registerDuckRacksFromObj(DuckStorage, remapKeys(await jsDirIntoJsonWithDi(domainDir, {
+    registerDuckRacksFromObj(DuckStorage, remapKeys(await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         '!__tests__',
         '!*.unit.js',
         '!lib',
         '*.js'
       ],
-
     })));
+
     domainMethodsAccess = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         '!__tests__',
@@ -1548,7 +1555,7 @@ async function apiSetup ({
     });
   } else if (typeof domainDir === 'object') {
     domainMethodsAccess = domainDir;
-    const domainRegistered = await registerDuckRacksFromObj(DuckStorage, domainDir);
+    const domainRegistered = registerDuckRacksFromObj(DuckStorage, domainDir);
     domain = Object.keys(domainRegistered).map(rackName => {
       return domainRegistered[rackName]
     });

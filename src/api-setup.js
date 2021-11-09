@@ -9,7 +9,6 @@ import cleanDeep from 'clean-deep'
 import { DuckStorageClass, registerDuckRacksFromObj, Duckfficer } from 'duck-storage'
 import Promise from 'bluebird'
 import qs from 'query-string'
-import { jsDirIntoJson } from 'js-dir-into-json'
 import pick from 'lodash/pick'
 import { schemaValidatorToJSON } from '@devtin/schema-validator-doc'
 import fs from 'fs'
@@ -33,15 +32,7 @@ import { crudEndpointToOpenApi } from './lib/crud-endpoint-to-openapi.js'
 import { convertToDot } from './lib/utils/convert-to-dot'
 import { grabClasses } from './lib/grab-classes.js'
 import { classesToObj } from './lib/grab-classes-sync.js'
-
-const jsDirIntoJsonIfExists = async (...args) => {
-  try {
-    return await jsDirIntoJson(...args)
-  }
-  catch (err) {
-    return []
-  }
-}
+import { jsDirIntoJsonIfExists } from './lib/utils/js-dir-into-json-if-exists.js'
 
 const { Utils, Transformers } = Duckfficer
 
@@ -219,8 +210,6 @@ export async function apiSetup ({
       } else {
         ctx.$pleasure.body = ctx.request.body
       }
-
-      console.log(ctx.$pleasure.body)
     }
 
     return next()
@@ -253,15 +242,15 @@ export async function apiSetup ({
       return dst
     }
 
-    await registerDuckRacksFromObj(DuckStorage, remapKeys(await jsDirIntoJsonWithDi(domainDir, {
+    registerDuckRacksFromObj(DuckStorage, remapKeys(await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         '!__tests__',
         '!*.unit.js',
         '!lib',
         '*.js'
       ],
-
     })))
+
     domainMethodsAccess = await jsDirIntoJsonWithDi(domainDir, {
       extensions: [
         '!__tests__',
@@ -289,7 +278,7 @@ export async function apiSetup ({
     })
   } else if (typeof domainDir === 'object') {
     domainMethodsAccess = domainDir
-    const domainRegistered = await registerDuckRacksFromObj(DuckStorage, domainDir)
+    const domainRegistered = registerDuckRacksFromObj(DuckStorage, domainDir)
     domain = Object.keys(domainRegistered).map(rackName => {
       return domainRegistered[rackName]
     })
