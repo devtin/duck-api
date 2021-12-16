@@ -1,5 +1,5 @@
 /*!
- * duck-api v0.0.31
+ * duck-api v0.0.32
  * (c) 2020-2021 Martin Rafael Gonzalez <tin@devtin.io>
  * MIT
  */
@@ -1444,7 +1444,7 @@ async function apiSetup ({
 
   const injectMethods = (obj, di) => {
     Object.entries(obj).forEach(([key, value]) => {
-      if (key !== 'methods' && typeof value === 'object') {
+      if (key !== 'methods' && typeof value === 'object' && value !== null) {
         obj[key] = injectMethods(value, di);
       }
     });

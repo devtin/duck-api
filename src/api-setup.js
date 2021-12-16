@@ -119,7 +119,7 @@ export async function apiSetup ({
 
   const injectMethods = (obj, di) => {
     Object.entries(obj).forEach(([key, value]) => {
-      if (key !== 'methods' && typeof value === 'object') {
+      if (key !== 'methods' && typeof value === 'object' && value !== null) {
         obj[key] = injectMethods(value, di)
       }
     })
